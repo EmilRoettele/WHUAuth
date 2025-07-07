@@ -1,0 +1,5 @@
+creates pages in App folder
+
+Also the layout file for persistens elements across pages (Name: _layout.jsx)
+    call rnfes
+    name RootLayout

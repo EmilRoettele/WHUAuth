@@ -1,5 +1,6 @@
 {
   "expo": {
+    "scheme": "whuauth",
     "name": "WHUAuth",
     "slug": "WHUAuth",
     "version": "1.0.0",
@@ -23,7 +24,18 @@
       "edgeToEdgeEnabled": true
     },
     "web": {
-      "favicon": "./assets/favicon.png"
-    }
+      "favicon": "./assets/favicon.png",
+      "name": "WHUAuth - QR Scanner",
+      "shortName": "WHUAuth",
+      "description": "QR code scanning and data management app",
+      "startUrl": "/",
+      "display": "standalone",
+      "themeColor": "#2563eb",
+      "backgroundColor": "#f8f9fa",
+      "orientation": "portrait"
+    },
+    "plugins": [
+      "expo-router"
+    ]
   }
 }
