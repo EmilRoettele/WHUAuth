@@ -3,7 +3,6 @@ import React, { useState, useEffect, useRef } from 'react'
 import { CameraView, Camera } from 'expo-camera'
 import ProfileModal from '../components/ProfileModal'
 import { useData } from '../contexts/DataContext'
-import { router } from 'expo-router'
 
 const { width } = Dimensions.get('window')
 
@@ -29,7 +28,7 @@ const Scan = () => {
       onPanResponderRelease: (evt, gestureState) => {
         // Swipe right to go to Upload page
         if (gestureState.dx > 100 && Math.abs(gestureState.vx) > 0.5) {
-          router.push('/upload')
+          // router.push('/upload')
         }
       },
     })
