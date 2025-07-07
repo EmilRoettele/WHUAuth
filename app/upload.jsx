@@ -4,6 +4,7 @@ import * as DocumentPicker from 'expo-document-picker'
 import Papa from 'papaparse'
 import ProfileModal from '../components/ProfileModal'
 import { useData } from '../contexts/DataContext'
+import { router } from 'expo-router'
 
 const Upload = () => {
   const { uploadedData, uploadedFileName, updateUploadedData, clearUploadedData, hasUploadedData, profile } = useData()
@@ -24,7 +25,7 @@ const Upload = () => {
       onPanResponderRelease: (evt, gestureState) => {
         // Swipe left to go to Scan page
         if (gestureState.dx < -100 && Math.abs(gestureState.vx) > 0.5) {
-          // router.push('/')
+          router.push('/')
         }
       },
     })
