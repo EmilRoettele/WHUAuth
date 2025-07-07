@@ -3,3 +3,14 @@ creates pages in App folder
 Also the layout file for persistens elements across pages (Name: _layout.jsx)
     call rnfes
     name RootLayout
+
+
+Github update workflow
+
+# 1. Make code changes in Cursor
+# 2. Commit and push:
+git add .
+git commit -m "Describe your change"
+git push
+
+# 3. That's it! Netlify handles the rest automatically
