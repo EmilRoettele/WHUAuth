@@ -1,11 +1,41 @@
 import { StyleSheet, Text, View, TouchableOpacity, Dimensions, Alert, PanResponder, Platform } from 'react-native'
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { CameraView, Camera } from 'expo-camera'
+import { useFocusEffect } from 'expo-router'
 import ProfileModal from '../components/ProfileModal'
 import { useData } from '../contexts/DataContext'
 import { router } from 'expo-router'
 
-const { width } = Dimensions.get('window')
+const { width, height } = Dimensions.get('window')
+
+// Responsive dimensions that work across platforms
+const getResponsiveDimensions = () => {
+  const isWeb = Platform.OS === 'web'
+  const isTablet = width > 768
+  
+  return {
+    // Horizontal padding based on screen size
+    horizontalPadding: isWeb ? (isTablet ? 40 : 20) : 20,
+    
+    // Top padding consistent across pages, responsive to platform
+    topPadding: isWeb ? (isTablet ? 60 : 40) : 50,
+    
+    // Camera/content width that's responsive
+    contentWidth: isWeb 
+      ? Math.min(width - (isTablet ? 120 : 80), 400) // Max 400px on web, responsive padding
+      : width - 60, // Native mobile keeps current behavior
+      
+    // Bottom padding for tab bar
+    bottomPadding: 140,
+    
+    // Responsive font sizes
+    titleFontSize: isWeb ? (isTablet ? 28 : 24) : 24,
+    subtitleFontSize: isWeb ? (isTablet ? 18 : 16) : 16,
+    
+    // Touch target improvements
+    minTouchTarget: 44 // iOS HIG minimum touch target
+  }
+}
 
 const Scan = () => {
   const { findMatchByQRContent, hasUploadedData, profile } = useData()
@@ -14,7 +44,9 @@ const Scan = () => {
   const [showProfileModal, setShowProfileModal] = useState(false)
   const [hasPermission, setHasPermission] = useState(null)
   const [messageKey, setMessageKey] = useState(0) // For animation trigger
+  const [scannedData, setScannedData] = useState(null) // For scan debouncing
   const messageTimeoutRef = useRef(null)
+  const lastScanTimeRef = useRef(0)
 
   // Swipe navigation
   const panResponder = useRef(
@@ -35,9 +67,27 @@ const Scan = () => {
     })
   ).current
 
+  // Initialize camera on mount
   useEffect(() => {
     getCameraPermissions()
   }, [])
+
+  // Reinitialize camera when tab comes into focus (fixes camera breaking after navigation)
+  useFocusEffect(
+    useCallback(() => {
+      console.log('Scan tab focused - reinitializing camera')
+      
+      // Small delay for web browsers to properly handle camera reinitialization
+      const timeoutId = setTimeout(() => {
+        getCameraPermissions()
+      }, Platform.OS === 'web' ? 500 : 100)
+
+      return () => {
+        clearTimeout(timeoutId)
+        console.log('Scan tab unfocused - cleaning up camera')
+      }
+    }, [])
+  )
 
   useEffect(() => {
     // Cleanup timeout on unmount
@@ -50,8 +100,15 @@ const Scan = () => {
 
   const getCameraPermissions = async () => {
     try {
+      console.log('Requesting camera permissions...')
       const { status } = await Camera.requestCameraPermissionsAsync()
+      console.log('Camera permission status:', status)
+      
       setHasPermission(status === 'granted')
+      
+      // Clear any previous scan data when camera reinitializes
+      setScannedData(null)
+      lastScanTimeRef.current = 0
       
       // For web: if permission was denied, provide clear instructions
       if (status === 'denied' && Platform.OS === 'web') {
@@ -65,7 +122,17 @@ const Scan = () => {
 
   // Add retry function for denied permissions
   const retryPermissions = () => {
+    resetScanState() // Clear any previous scan state
     getCameraPermissions()
+  }
+
+  // Helper function to reset scan state (useful for debugging)
+  const resetScanState = () => {
+    console.log('Resetting scan state')
+    setScannedData(null)
+    lastScanTimeRef.current = 0
+    setMessage('')
+    setMessageType('')
   }
 
   const getProfileLetter = () => {
@@ -79,32 +146,65 @@ const Scan = () => {
       clearTimeout(messageTimeoutRef.current)
     }
 
+    console.log('Showing message:', { text, type })
+
     // Trigger animation by changing key
     setMessageKey(prev => prev + 1)
     setMessage(text)
     setMessageType(type)
 
-    // Set new timeout to clear message after 1 second
+    // Shorter timeout to prevent interference with rapid scanning
     messageTimeoutRef.current = setTimeout(() => {
       setMessage('')
       setMessageType('')
-    }, 1500)
+      console.log('Message cleared')
+    }, 1200) // Reduced from 1500ms to 1200ms
   }
 
   const handleBarCodeScanned = ({ type, data }) => {
-    // Check if uploaded data exists
-    if (!hasUploadedData) {
-      showMessage('Failure', 'failure')
+    const currentTime = Date.now()
+    
+    // Debouncing: Ignore scans that are too rapid or duplicate
+    if (
+      scannedData === data && 
+      currentTime - lastScanTimeRef.current < 2000 // 2 second cooldown
+    ) {
+      console.log('Ignoring duplicate scan:', data)
       return
     }
 
-    // Simple cross-check: Is the scanned content in the uploaded list?
+    // Update scan tracking
+    setScannedData(data)
+    lastScanTimeRef.current = currentTime
+
+    console.log('QR Code detected:', {
+      type,
+      data,
+      timestamp: new Date().toISOString(),
+      hasUploadedData
+    })
+
+    // Check if uploaded data exists
+    if (!hasUploadedData) {
+      console.log('No uploaded data - showing failure')
+      showMessage('Failure - No data uploaded', 'failure')
+      return
+    }
+
+    // Enhanced cross-check with better string normalization
     const matchedRecord = findMatchByQRContent(data)
+    
+    console.log('QR matching result:', {
+      searchData: data,
+      found: !!matchedRecord,
+      matchedRecord: matchedRecord || 'none',
+      totalRecords: uploadedData.length
+    })
     
     if (matchedRecord) {
       showMessage(`Success! ${matchedRecord.name}`, 'success')
     } else {
-      showMessage('Failure', 'failure')
+      showMessage('Failure - Not found', 'failure')
     }
   }
 
@@ -204,12 +304,12 @@ const Scan = () => {
 export default Scan
 
 const styles = StyleSheet.create({
-   container: {
+  container: {
     flex: 1,
     backgroundColor: '#f8f9fa',
-    paddingHorizontal: 20,
-    paddingTop: 40, //MAKE ALIGNMENT ADJUSTMENT HERE
-    paddingBottom: 140,
+    paddingHorizontal: getResponsiveDimensions().horizontalPadding,
+    paddingTop: getResponsiveDimensions().topPadding,
+    paddingBottom: getResponsiveDimensions().bottomPadding,
   },
   headerContainer: {
     flexDirection: 'row',
@@ -225,9 +325,9 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   profileIconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: Math.max(32, getResponsiveDimensions().minTouchTarget),
+    height: Math.max(32, getResponsiveDimensions().minTouchTarget),
+    borderRadius: Math.max(16, getResponsiveDimensions().minTouchTarget / 2),
     backgroundColor: '#2563eb',
     justifyContent: 'center',
     alignItems: 'center',
@@ -238,15 +338,15 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   title: {
-    fontSize: 24,
+    fontSize: getResponsiveDimensions().titleFontSize,
     fontWeight: 'bold',
     color: '#333',
     marginBottom: 8,
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: getResponsiveDimensions().subtitleFontSize,
     color: '#666',
-    textAlign: 'left',
+    textAlign: 'left', // Consistent left alignment for both pages
   },
   cameraContainer: {
     alignItems: 'center',
@@ -254,8 +354,8 @@ const styles = StyleSheet.create({
     marginBottom: 40,
   },
   cameraFeed: {
-    width: width - 60,
-    height: width - 60,
+    width: getResponsiveDimensions().contentWidth,
+    height: getResponsiveDimensions().contentWidth,
     backgroundColor: '#f8f9fa',
     borderRadius: 16,
     borderWidth: 1,
@@ -327,7 +427,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   messageBox: {
-    width: width - 60,
+    width: getResponsiveDimensions().contentWidth,
     padding: 15,
     borderRadius: 12,
     alignItems: 'center',
@@ -358,6 +458,8 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 8,
     marginTop: 16,
+    minHeight: getResponsiveDimensions().minTouchTarget,
+    justifyContent: 'center',
   },
   retryButtonText: {
     color: '#fff',

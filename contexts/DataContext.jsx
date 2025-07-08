@@ -93,9 +93,43 @@ export const DataProvider = ({ children }) => {
   }
 
   const findMatchByQRContent = (qrContent) => {
-    return uploadedData.find(item => 
-      item.qrContent && item.qrContent.trim().toLowerCase() === qrContent.trim().toLowerCase()
+    if (!qrContent || !uploadedData.length) return null
+
+    // Enhanced normalization for better matching
+    const normalizeString = (str) => {
+      return str
+        .toString()
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ')  // Replace multiple spaces with single space
+        .replace(/[^\w\s]/g, '') // Remove special characters except letters, numbers, spaces
+    }
+
+    const normalizedSearch = normalizeString(qrContent)
+    
+    console.log('Searching for QR content:', {
+      original: qrContent,
+      normalized: normalizedSearch,
+      totalRecords: uploadedData.length
+    })
+
+    // Try exact match first
+    let match = uploadedData.find(item => 
+      item.qrContent && normalizeString(item.qrContent) === normalizedSearch
     )
+
+    // If no exact match, try partial matches (useful for QR codes with extra formatting)
+    if (!match) {
+      match = uploadedData.find(item => 
+        item.qrContent && (
+          normalizeString(item.qrContent).includes(normalizedSearch) ||
+          normalizedSearch.includes(normalizeString(item.qrContent))
+        )
+      )
+    }
+
+    console.log('Match result:', match || 'No match found')
+    return match
   }
 
   const value = {

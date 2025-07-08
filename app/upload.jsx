@@ -1,10 +1,41 @@
-import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Alert, PanResponder, Platform } from 'react-native'
+import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Alert, PanResponder, Platform, Dimensions } from 'react-native'
 import React, { useState, useRef } from 'react'
 import * as DocumentPicker from 'expo-document-picker'
 import Papa from 'papaparse'
 import ProfileModal from '../components/ProfileModal'
 import { useData } from '../contexts/DataContext'
 import { router } from 'expo-router'
+
+const { width, height } = Dimensions.get('window')
+
+// Responsive dimensions that work across platforms (shared with Scan page)
+const getResponsiveDimensions = () => {
+  const isWeb = Platform.OS === 'web'
+  const isTablet = width > 768
+  
+  return {
+    // Horizontal padding based on screen size
+    horizontalPadding: isWeb ? (isTablet ? 40 : 20) : 20,
+    
+    // Top padding consistent across pages, responsive to platform
+    topPadding: isWeb ? (isTablet ? 60 : 40) : 50,
+    
+    // Content width that's responsive
+    contentWidth: isWeb 
+      ? Math.min(width - (isTablet ? 120 : 80), 400) // Max 400px on web, responsive padding
+      : width - 60, // Native mobile keeps current behavior
+      
+    // Bottom padding for tab bar
+    bottomPadding: 140,
+    
+    // Responsive font sizes
+    titleFontSize: isWeb ? (isTablet ? 28 : 24) : 24,
+    subtitleFontSize: isWeb ? (isTablet ? 18 : 16) : 16,
+    
+    // Touch target improvements
+    minTouchTarget: 44 // iOS HIG minimum touch target
+  }
+}
 
 const Upload = () => {
   const { uploadedData, uploadedFileName, updateUploadedData, clearUploadedData, hasUploadedData, profile } = useData()
@@ -283,9 +314,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8f9fa',
   },
   scrollContainer: {
-    paddingHorizontal: 20,
-    paddingTop: 30, //MAKE ALIGNMENT ADJUSTMENT HERE
-    paddingBottom: 140,
+    paddingHorizontal: getResponsiveDimensions().horizontalPadding,
+    paddingTop: getResponsiveDimensions().topPadding,
+    paddingBottom: getResponsiveDimensions().bottomPadding,
   },
   headerContainer: {
     flexDirection: 'row',
@@ -301,9 +332,9 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   profileIconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: Math.max(32, getResponsiveDimensions().minTouchTarget),
+    height: Math.max(32, getResponsiveDimensions().minTouchTarget),
+    borderRadius: Math.max(16, getResponsiveDimensions().minTouchTarget / 2),
     backgroundColor: '#2563eb',
     justifyContent: 'center',
     alignItems: 'center',
@@ -314,15 +345,15 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   title: {
-    fontSize: 24,
+    fontSize: getResponsiveDimensions().titleFontSize,
     fontWeight: 'bold',
     color: '#333',
     marginBottom: 8,
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: getResponsiveDimensions().subtitleFontSize,
     color: '#666',
-    textAlign: 'center',
+    textAlign: 'left', // Consistent left alignment for both pages
   },
   uploadSection: {
     marginBottom: 20,
@@ -334,9 +365,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: '#f9fafb',
     paddingVertical: 24,
-    paddingHorizontal: 20,
+    paddingHorizontal: getResponsiveDimensions().horizontalPadding,
     alignItems: 'center',
     marginBottom: 12,
+    // Responsive max width to prevent overly wide containers on large screens
+    maxWidth: Platform.OS === 'web' ? 500 : '100%',
+    alignSelf: 'center',
   },
   uploadIcon: {
     marginBottom: 12,
@@ -360,10 +394,12 @@ const styles = StyleSheet.create({
   },
   browseButton: {
     backgroundColor: '#2563eb',
-    paddingVertical: 10,
+    paddingVertical: Math.max(10, getResponsiveDimensions().minTouchTarget / 4),
     paddingHorizontal: 24,
     borderRadius: 8,
     marginBottom: 12,
+    minHeight: getResponsiveDimensions().minTouchTarget,
+    justifyContent: 'center',
   },
   browseButtonText: {
     color: '#fff',
@@ -400,6 +436,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#ef4444',
+    minHeight: getResponsiveDimensions().minTouchTarget,
+    justifyContent: 'center',
   },
   clearButtonText: {
     fontSize: 16,
@@ -430,6 +468,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#f3f4f6',
     overflow: 'hidden',
+    // Responsive max width for better readability on large screens
+    maxWidth: Platform.OS === 'web' ? 800 : '100%',
+    alignSelf: 'center',
   },
 
   tableHeader: {
