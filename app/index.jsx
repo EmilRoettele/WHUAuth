@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View, TouchableOpacity, Dimensions, Alert, PanResponder } from 'react-native'
+import { StyleSheet, Text, View, TouchableOpacity, Dimensions, Alert, PanResponder, Platform } from 'react-native'
 import React, { useState, useEffect, useRef } from 'react'
 import { CameraView, Camera } from 'expo-camera'
 import ProfileModal from '../components/ProfileModal'
@@ -49,8 +49,23 @@ const Scan = () => {
   }, [])
 
   const getCameraPermissions = async () => {
-    const { status } = await Camera.requestCameraPermissionsAsync()
-    setHasPermission(status === 'granted')
+    try {
+      const { status } = await Camera.requestCameraPermissionsAsync()
+      setHasPermission(status === 'granted')
+      
+      // For web: if permission was denied, provide clear instructions
+      if (status === 'denied' && Platform.OS === 'web') {
+        console.log('Camera permission denied. User needs to check browser settings.')
+      }
+    } catch (error) {
+      console.error('Camera permission error:', error)
+      setHasPermission(false)
+    }
+  }
+
+  // Add retry function for denied permissions
+  const retryPermissions = () => {
+    getCameraPermissions()
   }
 
   const getProfileLetter = () => {
@@ -140,7 +155,18 @@ const Scan = () => {
           {hasPermission === false && (
             <View style={styles.cameraPlaceholder}>
               <Text style={styles.placeholderText}>Camera Permission Denied</Text>
-              <Text style={styles.placeholderSubtext}>Enable camera access in settings</Text>
+              <Text style={styles.placeholderSubtext}>
+                {Platform.OS === 'web' 
+                  ? 'Click the lock icon in your browser address bar and allow camera access, then retry.'
+                  : 'Enable camera access in settings'
+                }
+              </Text>
+              <TouchableOpacity 
+                style={styles.retryButton} 
+                onPress={retryPermissions}
+              >
+                <Text style={styles.retryButtonText}>Retry Permission</Text>
+              </TouchableOpacity>
             </View>
           )}
           
@@ -182,7 +208,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f8f9fa',
     paddingHorizontal: 20,
-    paddingTop: 30, //MAKE ALIGNMENT ADJUSTMENT HERE
+    paddingTop: 40, //MAKE ALIGNMENT ADJUSTMENT HERE
     paddingBottom: 140,
   },
   headerContainer: {
@@ -301,6 +327,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   messageBox: {
+    width: width - 60,
     padding: 15,
     borderRadius: 12,
     alignItems: 'center',
@@ -325,5 +352,16 @@ const styles = StyleSheet.create({
   messageAnimation: {
     transform: [{ scale: 1.05 }],
     // Simple pop-in effect - slightly larger scale for emphasis
+  },
+  retryButton: {
+    backgroundColor: '#2563eb',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 16,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 })

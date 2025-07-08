@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Alert, PanResponder } from 'react-native'
+import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Alert, PanResponder, Platform } from 'react-native'
 import React, { useState, useRef } from 'react'
 import * as DocumentPicker from 'expo-document-picker'
 import Papa from 'papaparse'
@@ -34,6 +34,17 @@ const Upload = () => {
   const getProfileLetter = () => {
     const name = profile.userName || 'User'
     return name.charAt(0).toUpperCase()
+  }
+
+  // Helper function for platform-compatible alerts
+  const showAlert = (title, message, type = 'info') => {
+    if (Platform.OS === 'web') {
+      // Use native browser alert for web
+      window.alert(`${title}\n\n${message}`)
+    } else {
+      // Use React Native Alert for mobile
+      Alert.alert(title, message)
+    }
   }
 
   const parseCSV = (content) => {
@@ -96,7 +107,7 @@ const Upload = () => {
         const response = await fetch(file.uri)
         
         if (!file.mimeType === 'text/csv' && !file.name.toLowerCase().endsWith('.csv')) {
-          Alert.alert('Error', 'Please upload a CSV file only.')
+          showAlert('Error', 'Please upload a CSV file only.')
           return
         }
 
@@ -105,49 +116,62 @@ const Upload = () => {
 
         const validation = validateColumns(parsedData)
         if (!validation.valid) {
-          Alert.alert('Invalid File Format', validation.error)
+          showAlert('Invalid File Format', validation.error)
           return
         }
 
         const normalizedData = normalizeData(parsedData)
         
         if (normalizedData.length === 0) {
-          Alert.alert('Error', 'No valid data found in file. Please check that all rows have Random, Name, and QR Content.')
+          showAlert('Error', 'No valid data found in file. Please check that all rows have Random, Name, and QR Content.')
           return
         }
 
         setUploadedFiles([file])
         updateUploadedData(normalizedData, file.name)
         
-        Alert.alert('Success', `File uploaded successfully! Found ${normalizedData.length} valid records.`)
+        showAlert('Success', `File uploaded successfully! Found ${normalizedData.length} valid records.`)
       }
     } catch (error) {
       console.error('File selection error:', error)
-      Alert.alert('Error', 'Failed to load file. Please try again.')
+      showAlert('Error', 'Failed to load file. Please try again.')
     } finally {
       setIsLoading(false)
     }
   }
 
   const handleClearUploads = () => {
-    Alert.alert(
-      'Clear All Uploads',
-      'Are you sure you want to clear all uploaded files and their content? This action cannot be undone.',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Clear All',
-          style: 'destructive',
-          onPress: () => {
-            setUploadedFiles([])
-            clearUploadedData()
+    const clearData = () => {
+      setUploadedFiles([])
+      clearUploadedData()
+    }
+
+    if (Platform.OS === 'web') {
+      // Use native browser confirm dialog for web
+      const confirmed = window.confirm(
+        'Are you sure you want to clear all uploaded files and their content? This action cannot be undone.'
+      )
+      if (confirmed) {
+        clearData()
+      }
+    } else {
+      // Use React Native Alert for mobile
+      Alert.alert(
+        'Clear All Uploads',
+        'Are you sure you want to clear all uploaded files and their content? This action cannot be undone.',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
           },
-        },
-      ]
-    )
+          {
+            text: 'Clear All',
+            style: 'destructive',
+            onPress: clearData,
+          },
+        ]
+      )
+    }
   }
 
   return (
