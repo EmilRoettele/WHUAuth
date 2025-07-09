@@ -1,7 +1,9 @@
 import React from 'react'
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
 import { CameraView } from 'expo-camera'
 import WebQRScanner from './WebQRScanner'
 import { isWeb } from '../utils/platform'
+import { getResponsiveDimensions } from '../utils/dimensions'
 
 const UniversalQRScanner = ({ 
   onBarcodeScanned, 
@@ -19,68 +21,25 @@ const UniversalQRScanner = ({
     )
   }
 
-  // Native implementation for mobile platforms
+  // Native implementation for mobile platforms (React Native components)
   return (
     <>
       {cameraStatus === 'loading' && (
-        <div style={style}>
-          <div style={{ 
-            display: 'flex', 
-            justifyContent: 'center', 
-            alignItems: 'center',
-            height: '100%',
-            color: '#9ca3af',
-            fontSize: '16px',
-            fontWeight: '500'
-          }}>
-            Initializing Camera
-          </div>
-        </div>
+        <View style={[style, styles.placeholder]}>
+          <Text style={styles.placeholderText}>Initializing Camera</Text>
+        </View>
       )}
       
       {cameraStatus === 'denied' && (
-        <div style={style}>
-          <div style={{ 
-            display: 'flex', 
-            flexDirection: 'column',
-            justifyContent: 'center', 
-            alignItems: 'center',
-            height: '100%',
-            textAlign: 'center',
-            padding: '20px'
-          }}>
-            <div style={{ 
-              color: '#9ca3af',
-              fontSize: '16px',
-              fontWeight: '500',
-              marginBottom: '8px'
-            }}>
-              Camera Permission Denied
-            </div>
-            <div style={{ 
-              color: '#9ca3af',
-              fontSize: '14px',
-              marginBottom: '16px'
-            }}>
-              Enable camera access in settings
-            </div>
-            <button
-              onClick={retryPermissions}
-              style={{
-                backgroundColor: '#2563eb',
-                color: '#fff',
-                padding: '12px 24px',
-                border: 'none',
-                borderRadius: '8px',
-                fontSize: '16px',
-                fontWeight: 'bold',
-                cursor: 'pointer'
-              }}
-            >
-              Retry Permission
-            </button>
-          </div>
-        </div>
+        <View style={[style, styles.placeholder]}>
+          <Text style={styles.placeholderText}>Camera Permission Denied</Text>
+          <Text style={styles.placeholderSubtext}>
+            Enable camera access in settings
+          </Text>
+          <TouchableOpacity style={styles.retryButton} onPress={retryPermissions}>
+            <Text style={styles.retryButtonText}>Retry Permission</Text>
+          </TouchableOpacity>
+        </View>
       )}
       
       {cameraStatus === 'ready' && (
@@ -94,5 +53,38 @@ const UniversalQRScanner = ({
     </>
   )
 }
+
+const styles = StyleSheet.create({
+  placeholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  placeholderText: {
+    color: '#9ca3af',
+    fontSize: 16,
+    fontWeight: '500',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  placeholderSubtext: {
+    color: '#9ca3af',
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  retryButton: {
+    backgroundColor: '#2563eb',
+    padding: 12,
+    borderRadius: 8,
+    minHeight: getResponsiveDimensions().minTouchTarget,
+    justifyContent: 'center',
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+})
 
 export default UniversalQRScanner 

@@ -9,33 +9,68 @@ const WebQRScanner = ({ onBarcodeScanned, style }) => {
   const [message, setMessage] = useState('')
   const html5QrCodeRef = useRef(null)
   const isInitializedRef = useRef(false)
+  const scannerContainerRef = useRef(null)
 
   useEffect(() => {
+    console.log('WebQRScanner: Component mounted, starting initialization')
     initializeScanner()
     
     return () => {
+      console.log('WebQRScanner: Component unmounting, cleaning up scanner')
       cleanupScanner()
     }
   }, [])
 
   const initializeScanner = async () => {
     try {
+      console.log('WebQRScanner: Starting initialization')
       setScannerState('loading')
       
       // Check browser capabilities
+      console.log('WebQRScanner: Checking browser capabilities')
       const capabilities = getBrowserCapabilities()
+      console.log('WebQRScanner: Browser capabilities:', capabilities)
+      
       if (!capabilities?.hasGetUserMedia) {
+        console.error('WebQRScanner: getUserMedia not supported')
         setScannerState('error')
         setMessage('Camera not supported in this browser')
         return
       }
 
-      // Initialize html5-qrcode
-      html5QrCodeRef.current = new Html5Qrcode('web-qr-scanner')
+      // Wait a bit for the DOM element to be ready
+      console.log('WebQRScanner: Waiting for DOM element to be ready')
+      await new Promise(resolve => setTimeout(resolve, 500)) // Increased timeout
+
+      // Get the container element from React Native Web
+      console.log('WebQRScanner: Getting scanner container ref')
+      if (!scannerContainerRef.current) {
+        console.error('WebQRScanner: Scanner container ref is null')
+        setScannerState('error')
+        setMessage('Scanner container not ready')
+        return
+      }
+
+      // Create a unique ID for this scanner instance
+      const scannerId = `web-qr-scanner-${Date.now()}`
+      console.log('WebQRScanner: Created scanner ID:', scannerId)
+      
+      // Get the underlying DOM element from React Native Web
+      const containerElement = scannerContainerRef.current
+      console.log('WebQRScanner: Container element:', containerElement)
+      containerElement.id = scannerId
+
+      // Initialize html5-qrcode with the container element
+      console.log('WebQRScanner: Initializing Html5Qrcode')
+      html5QrCodeRef.current = new Html5Qrcode(scannerId)
       
       // Get available cameras
+      console.log('WebQRScanner: Getting available cameras')
       const cameras = await Html5Qrcode.getCameras()
+      console.log('WebQRScanner: Available cameras:', cameras)
+      
       if (!cameras || cameras.length === 0) {
+        console.error('WebQRScanner: No cameras found')
         setScannerState('error')
         setMessage('No cameras found')
         return
@@ -43,7 +78,10 @@ const WebQRScanner = ({ onBarcodeScanned, style }) => {
 
       // Choose back camera if available, otherwise use first camera
       const cameraId = cameras.length > 1 ? cameras[1].id : cameras[0].id
+      console.log('WebQRScanner: Selected camera ID:', cameraId)
+      
       const constraints = getOptimalWebCameraConstraints()
+      console.log('WebQRScanner: Camera constraints:', constraints)
 
       // Configure scanner settings optimized for web
       const config = {
@@ -55,7 +93,9 @@ const WebQRScanner = ({ onBarcodeScanned, style }) => {
           useBarCodeDetectorIfSupported: true // Use native API when available
         }
       }
+      console.log('WebQRScanner: Scanner config:', config)
 
+      console.log('WebQRScanner: Starting camera stream')
       await html5QrCodeRef.current.start(
         cameraId,
         config,
@@ -63,18 +103,24 @@ const WebQRScanner = ({ onBarcodeScanned, style }) => {
         handleScanError
       )
 
+      console.log('WebQRScanner: Camera started successfully')
       setScannerState('ready')
       isInitializedRef.current = true
       
     } catch (error) {
-      console.error('Scanner initialization error:', error)
+      console.error('WebQRScanner: Scanner initialization error:', error)
+      console.error('WebQRScanner: Error name:', error.name)
+      console.error('WebQRScanner: Error message:', error.message)
+      console.error('WebQRScanner: Error stack:', error.stack)
       
       if (error.name === 'NotAllowedError' || error.message.includes('Permission')) {
+        console.log('WebQRScanner: Setting state to denied due to permission error')
         setScannerState('denied')
         setMessage('Camera permission denied')
       } else {
+        console.log('WebQRScanner: Setting state to error due to other error')
         setScannerState('error')
-        setMessage('Camera initialization failed')
+        setMessage('Camera initialization failed: ' + error.message)
       }
     }
   }
@@ -157,15 +203,10 @@ const WebQRScanner = ({ onBarcodeScanned, style }) => {
         renderPlaceholder()
       ) : (
         <>
-          {/* html5-qrcode will render into this div */}
-          <div
-            id="web-qr-scanner"
-            style={{
-              width: '100%',
-              height: '100%',
-              borderRadius: '16px',
-              overflow: 'hidden'
-            }}
+          {/* html5-qrcode will render into this View */}
+          <View
+            ref={scannerContainerRef}
+            style={styles.scannerContainer}
           />
           
           {/* QR Code Outline - positioned over the scanner */}
@@ -192,6 +233,12 @@ const styles = StyleSheet.create({
     position: 'relative',
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
+  },
+  scannerContainer: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 16,
     overflow: 'hidden',
   },
   cameraPlaceholder: {
