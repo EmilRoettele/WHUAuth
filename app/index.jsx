@@ -1,65 +1,28 @@
-import { StyleSheet, Text, View, TouchableOpacity, Dimensions, Platform } from 'react-native'
-import React, { useState, useEffect, useRef } from 'react'
+import { StyleSheet, Text, View, TouchableOpacity, Platform } from 'react-native'
+import React, { useState, useRef, useEffect } from 'react'
 import { CameraView } from 'expo-camera'
 import ProfileModal from '../components/ProfileModal'
 import { useData } from '../contexts/DataContext'
 import { useCameraContext } from '../contexts/CameraContext'
-import { router } from 'expo-router'
-
-const { width, height } = Dimensions.get('window')
-
-// Responsive dimensions that work across platforms
-const getResponsiveDimensions = () => {
-  const isWeb = Platform.OS === 'web'
-  const isTablet = width > 768
-  
-  return {
-    // Horizontal padding based on screen size
-    horizontalPadding: isWeb ? (isTablet ? 40 : 20) : 20,
-    
-    // Top padding consistent across pages, responsive to platform
-    topPadding: isWeb ? (isTablet ? 60 : 40) : 50,
-    
-    // Camera/content width that's responsive
-    contentWidth: isWeb 
-      ? Math.min(width - (isTablet ? 120 : 80), 400) // Max 400px on web, responsive padding
-      : width - 60, // Native mobile keeps current behavior
-      
-    // Bottom padding for tab bar
-    bottomPadding: 140,
-    
-    // Responsive font sizes
-    titleFontSize: isWeb ? (isTablet ? 28 : 24) : 24,
-    subtitleFontSize: isWeb ? (isTablet ? 18 : 16) : 16,
-    
-    // Touch target improvements
-    minTouchTarget: 44 // iOS HIG minimum touch target
-  }
-}
+import { getResponsiveDimensions } from '../utils/dimensions'
 
 const Scan = () => {
   const { findMatchByQRContent, hasUploadedData, profile } = useData()
-  const { hasPermission, isInitialized, retryPermissions } = useCameraContext()
+  const { cameraStatus, retryPermissions } = useCameraContext()
+  
+  // Simplified state - just message and profile modal
   const [message, setMessage] = useState('')
-  const [messageType, setMessageType] = useState('') // 'success' or 'failure'
   const [showProfileModal, setShowProfileModal] = useState(false)
-  const [messageKey, setMessageKey] = useState(0) // For animation trigger
-  const [scannedData, setScannedData] = useState(null) // For scan debouncing
+  const lastScanRef = useRef('')
   const messageTimeoutRef = useRef(null)
-  const lastScanTimeRef = useRef(0)
 
+  const getProfileLetter = () => {
+    const name = profile.userName || 'User'
+    return name.charAt(0).toUpperCase()
+  }
 
-
-  // Reset scan state when camera becomes available or app loads
+  // Cleanup timeout on unmount to prevent memory leaks
   useEffect(() => {
-    if (hasPermission) {
-      console.log('🎥 Camera ready - resetting scan state')
-      resetScanState()
-    }
-  }, [hasPermission])
-
-  useEffect(() => {
-    // Cleanup timeout on unmount
     return () => {
       if (messageTimeoutRef.current) {
         clearTimeout(messageTimeoutRef.current)
@@ -67,93 +30,32 @@ const Scan = () => {
     }
   }, [])
 
-  // Retry function that uses camera context
-  const handleRetryPermissions = () => {
-    console.log('🎥 User requested permission retry')
-    resetScanState() // Clear any previous scan state
-    retryPermissions() // Use context retry function
-  }
+  const handleBarCodeScanned = ({ data }) => {
+    // Simple debouncing - ignore if same QR scanned recently
+    if (lastScanRef.current === data) return
+    lastScanRef.current = data
 
-  // Helper function to reset scan state (useful for debugging)
-  const resetScanState = () => {
-    console.log('Resetting scan state')
-    setScannedData(null)
-    lastScanTimeRef.current = 0
-    setMessage('')
-    setMessageType('')
-  }
-
-  const getProfileLetter = () => {
-    const name = profile.userName || 'User'
-    return name.charAt(0).toUpperCase()
-  }
-
-  const showMessage = (text, type) => {
     // Clear any existing timeout
     if (messageTimeoutRef.current) {
       clearTimeout(messageTimeoutRef.current)
     }
 
-    console.log('Showing message:', { text, type })
-
-    // Trigger animation by changing key
-    setMessageKey(prev => prev + 1)
-    setMessage(text)
-    setMessageType(type)
-
-    // Shorter timeout to prevent interference with rapid scanning
+    // Clear message after 2 seconds
     messageTimeoutRef.current = setTimeout(() => {
       setMessage('')
-      setMessageType('')
-      console.log('Message cleared')
-    }, 1200) // Reduced from 1500ms to 1200ms
-  }
+      lastScanRef.current = ''
+    }, 2000)
 
-  const handleBarCodeScanned = ({ type, data }) => {
-    const currentTime = Date.now()
-    
-    // Debouncing: Ignore scans that are too rapid or duplicate
-    if (
-      scannedData === data && 
-      currentTime - lastScanTimeRef.current < 2000 // 2 second cooldown
-    ) {
-      console.log('Ignoring duplicate scan:', data)
-      return
-    }
-
-    // Update scan tracking
-    setScannedData(data)
-    lastScanTimeRef.current = currentTime
-
-    console.log('QR Code detected:', {
-      type,
-      data,
-      timestamp: new Date().toISOString(),
-      hasUploadedData
-    })
-
-    // Check if uploaded data exists
     if (!hasUploadedData) {
-      console.log('No uploaded data - showing failure')
-      showMessage('Failure - No data uploaded', 'failure')
+      setMessage('Failure - No data uploaded')
       return
     }
 
-    // Enhanced cross-check with better string normalization
     const searchResult = findMatchByQRContent(data)
-    
-    console.log('QR matching result:', {
-      searchData: data,
-      found: searchResult.found,
-      matchedRecord: searchResult.match || 'none',
-      totalRecords: searchResult.totalRecords
-    })
-    
-    if (searchResult.found) {
-      showMessage(`Success! ${searchResult.match.name}`, 'success')
-    } else {
-      showMessage('Failure - Not found', 'failure')
-    }
+    setMessage(searchResult.found 
+      ? `Success! ${searchResult.match.name}` 
+      : 'Failure - Not found'
+    )
   }
 
   return (
@@ -174,76 +76,58 @@ const Scan = () => {
         </TouchableOpacity>
       </View>
 
-      {/* Fixed Message Space - always reserves space so camera doesn't move */}
-      <View style={styles.messageSpace}>
-        {message && (
-          <View 
-            key={messageKey}
-            style={[
-              styles.messageBox, 
-              messageType === 'success' ? styles.successMessage : styles.failureMessage,
-              styles.messageAnimation
-            ]}
-          >
-            <Text style={styles.messageText}>{message}</Text>
-          </View>
-        )}
-      </View>
+      {/* Simple Message */}
+      {message && (
+        <View style={styles.messageContainer}>
+          <Text style={[styles.messageText, 
+            message.includes('Success') ? styles.successText : styles.failureText
+          ]}>
+            {message}
+          </Text>
+        </View>
+      )}
 
-      {/* Camera Container with QR Outline */}
+      {/* Camera Container */}
       <View style={styles.cameraContainer}>
         <View style={styles.cameraFeed}>
-          {!isInitialized && (
+          {cameraStatus === 'loading' && (
             <View style={styles.cameraPlaceholder}>
               <Text style={styles.placeholderText}>Initializing Camera</Text>
-              <Text style={styles.placeholderSubtext}>Setting up camera stream...</Text>
-            </View>
-          )}
-
-          {isInitialized && hasPermission === null && (
-            <View style={styles.cameraPlaceholder}>
-              <Text style={styles.placeholderText}>Requesting Camera Permission</Text>
-              <Text style={styles.placeholderSubtext}>Please allow camera access</Text>
             </View>
           )}
           
-          {isInitialized && hasPermission === false && (
+          {cameraStatus === 'denied' && (
             <View style={styles.cameraPlaceholder}>
               <Text style={styles.placeholderText}>Camera Permission Denied</Text>
               <Text style={styles.placeholderSubtext}>
                 {Platform.OS === 'web' 
-                  ? 'Click the lock icon in your browser address bar and allow camera access, then retry.'
+                  ? 'Allow camera access in browser settings'
                   : 'Enable camera access in settings'
                 }
               </Text>
-              <TouchableOpacity 
-                style={styles.retryButton} 
-                onPress={handleRetryPermissions}
-              >
+              <TouchableOpacity style={styles.retryButton} onPress={retryPermissions}>
                 <Text style={styles.retryButtonText}>Retry Permission</Text>
               </TouchableOpacity>
             </View>
           )}
           
-          {hasPermission && (
-            <CameraView
-              style={styles.camera}
-              facing="back"
-              barcodeScannerSettings={{
-                barcodeTypes: ["qr"],
-              }}
-              onBarcodeScanned={handleBarCodeScanned}
-            />
-          )}
-          
-          {/* QR Code Outline - always show when camera is active */}
-          {hasPermission && (
-            <View style={styles.qrOutline}>
-              <View style={[styles.corner, styles.topLeft]} />
-              <View style={[styles.corner, styles.topRight]} />
-              <View style={[styles.corner, styles.bottomLeft]} />
-              <View style={[styles.corner, styles.bottomRight]} />
-            </View>
+          {cameraStatus === 'ready' && (
+            <>
+              <CameraView
+                style={styles.camera}
+                facing="back"
+                barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+                onBarcodeScanned={handleBarCodeScanned}
+              />
+              
+              {/* QR Code Outline */}
+              <View style={styles.qrOutline}>
+                <View style={[styles.corner, styles.topLeft]} />
+                <View style={[styles.corner, styles.topRight]} />
+                <View style={[styles.corner, styles.bottomLeft]} />
+                <View style={[styles.corner, styles.bottomRight]} />
+              </View>
+            </>
           )}
         </View>
       </View>
@@ -375,38 +259,26 @@ const styles = StyleSheet.create({
     borderLeftWidth: 0,
     borderTopWidth: 0,
   },
-  messageSpace: {
-    height: 60,
+  messageContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    marginHorizontal: 20,
     marginBottom: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  messageBox: {
-    width: getResponsiveDimensions().contentWidth,
-    padding: 15,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  successMessage: {
-    backgroundColor: '#f0f9ff',
-    borderColor: '#2563eb',
+    backgroundColor: '#fff',
+    borderRadius: 8,
     borderWidth: 1,
-  },
-  failureMessage: {
-    backgroundColor: '#fef2f2',
-    borderColor: '#ef4444',
-    borderWidth: 1,
+    borderColor: '#e5e7eb',
   },
   messageText: {
     fontSize: 16,
     fontWeight: '500',
     textAlign: 'center',
-    lineHeight: 22,
   },
-  messageAnimation: {
-    transform: [{ scale: 1.05 }],
-    // Simple pop-in effect - slightly larger scale for emphasis
+  successText: {
+    color: '#059669',
+  },
+  failureText: {
+    color: '#dc2626',
   },
   retryButton: {
     backgroundColor: '#2563eb',

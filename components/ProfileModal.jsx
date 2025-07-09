@@ -22,7 +22,7 @@ const ProfileModal = ({ visible, onClose }) => {
     }
   }, [visible, fadeAnim])
 
-  const getAvatarLetter = () => {
+  const getProfileLetter = () => {
     const name = profile.userName || 'User'
     return name.charAt(0).toUpperCase()
   }
@@ -48,7 +48,7 @@ const ProfileModal = ({ visible, onClose }) => {
           {/* Profile Icon and Name */}
           <View style={styles.profileHeader}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{getAvatarLetter()}</Text>
+              <Text style={styles.avatarText}>{getProfileLetter()}</Text>
             </View>
             <Text style={styles.userName}>
               {profile.userName || 'User'}

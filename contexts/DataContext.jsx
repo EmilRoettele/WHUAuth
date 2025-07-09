@@ -46,7 +46,7 @@ export const DataProvider = ({ children }) => {
         setProfile(JSON.parse(storedProfile))
       }
     } catch (error) {
-      console.error('Error loading stored data:', error)
+      // Silently handle storage errors in production
     }
   }
 
@@ -61,7 +61,7 @@ export const DataProvider = ({ children }) => {
         AsyncStorage.setItem(STORAGE_KEYS.UPLOADED_FILENAME, fileName)
       ])
     } catch (error) {
-      console.error('Error saving uploaded data:', error)
+      // Silently handle storage errors in production
     }
   }
 
@@ -76,7 +76,7 @@ export const DataProvider = ({ children }) => {
         AsyncStorage.removeItem(STORAGE_KEYS.UPLOADED_FILENAME)
       ])
     } catch (error) {
-      console.error('Error clearing uploaded data:', error)
+      // Silently handle storage errors in production
     }
   }
 
@@ -88,7 +88,7 @@ export const DataProvider = ({ children }) => {
     try {
       await AsyncStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(updatedProfile))
     } catch (error) {
-      console.error('Error saving profile:', error)
+      // Silently handle storage errors in production
     }
   }
 
@@ -101,47 +101,20 @@ export const DataProvider = ({ children }) => {
       }
     }
 
-    // Enhanced normalization for better matching
-    const normalizeString = (str) => {
-      return str
-        .toString()
-        .trim()
-        .toLowerCase()
-        .replace(/\s+/g, ' ')  // Replace multiple spaces with single space
-        .replace(/[^\w\s]/g, '') // Remove special characters except letters, numbers, spaces
-    }
-
-    const normalizedSearch = normalizeString(qrContent)
+    // Simple normalization - trim and case-insensitive
+    const normalize = (str) => str.toString().trim().toLowerCase()
+    const searchTerm = normalize(qrContent)
     
-    console.log('Searching for QR content:', {
-      original: qrContent,
-      normalized: normalizedSearch,
-      totalRecords: uploadedData.length
-    })
-
-    // Try exact match first
-    let match = uploadedData.find(item => 
-      item.qrContent && normalizeString(item.qrContent) === normalizedSearch
+    // Find exact match
+    const match = uploadedData.find(item => 
+      item.qrContent && normalize(item.qrContent) === searchTerm
     )
 
-    // If no exact match, try partial matches (useful for QR codes with extra formatting)
-    if (!match) {
-      match = uploadedData.find(item => 
-        item.qrContent && (
-          normalizeString(item.qrContent).includes(normalizedSearch) ||
-          normalizedSearch.includes(normalizeString(item.qrContent))
-        )
-      )
-    }
-
-    const result = {
+    return {
       match: match || null,
       totalRecords: uploadedData.length,
       found: !!match
     }
-
-    console.log('Match result:', result.match || 'No match found')
-    return result
   }
 
   const value = {

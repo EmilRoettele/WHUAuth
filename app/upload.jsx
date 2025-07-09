@@ -1,109 +1,83 @@
-import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Alert, Platform, Dimensions } from 'react-native'
+import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Platform } from 'react-native'
 import React, { useState, useRef } from 'react'
 import * as DocumentPicker from 'expo-document-picker'
 import Papa from 'papaparse'
 import ProfileModal from '../components/ProfileModal'
 import { useData } from '../contexts/DataContext'
-import { router } from 'expo-router'
-
-const { width, height } = Dimensions.get('window')
-
-// Responsive dimensions that work across platforms (shared with Scan page)
-const getResponsiveDimensions = () => {
-  const isWeb = Platform.OS === 'web'
-  const isTablet = width > 768
-  
-  return {
-    // Horizontal padding based on screen size
-    horizontalPadding: isWeb ? (isTablet ? 40 : 20) : 20,
-    
-    // Top padding consistent across pages, responsive to platform
-    topPadding: isWeb ? (isTablet ? 60 : 40) : 50,
-    
-    // Content width that's responsive
-    contentWidth: isWeb 
-      ? Math.min(width - (isTablet ? 120 : 80), 400) // Max 400px on web, responsive padding
-      : width - 60, // Native mobile keeps current behavior
-      
-    // Bottom padding for tab bar
-    bottomPadding: 140,
-    
-    // Responsive font sizes
-    titleFontSize: isWeb ? (isTablet ? 28 : 24) : 24,
-    subtitleFontSize: isWeb ? (isTablet ? 18 : 16) : 16,
-    
-    // Touch target improvements
-    minTouchTarget: 44 // iOS HIG minimum touch target
-  }
-}
+import { getResponsiveDimensions } from '../utils/dimensions'
+import { showAlert, showConfirm } from '../utils/alerts'
 
 const Upload = () => {
   const { uploadedData, uploadedFileName, updateUploadedData, clearUploadedData, hasUploadedData, profile } = useData()
-  const [uploadedFiles, setUploadedFiles] = useState([])
   const [showProfileModal, setShowProfileModal] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-
-
 
   const getProfileLetter = () => {
     const name = profile.userName || 'User'
     return name.charAt(0).toUpperCase()
   }
 
-  // Helper function for platform-compatible alerts
-  const showAlert = (title, message, type = 'info') => {
-    if (Platform.OS === 'web') {
-      // Use native browser alert for web
-      window.alert(`${title}\n\n${message}`)
-    } else {
-      // Use React Native Alert for mobile
-      Alert.alert(title, message)
-    }
-  }
 
-  const parseCSV = (content) => {
+
+  // Streamlined CSV processing - parse, validate, and normalize in one step
+  const processCSVFile = (content) => {
     return new Promise((resolve) => {
-      Papa.parse(content, {
-        header: true,
-        skipEmptyLines: true,
-        complete: (results) => {
-          resolve(results.data)
-        }
-      })
+      try {
+        Papa.parse(content, {
+          header: true,
+          skipEmptyLines: true,
+          complete: (results) => {
+            try {
+              const data = results.data
+              
+              // Quick validation
+              if (!data || data.length === 0) {
+                return resolve({ valid: false, error: 'File is empty' })
+              }
+              
+              // Check if first row exists and has properties
+              const firstRow = data[0]
+              if (!firstRow || typeof firstRow !== 'object') {
+                return resolve({ valid: false, error: 'Invalid file format' })
+              }
+              
+              // Check required columns exist
+              const hasRandom = firstRow.hasOwnProperty('Random') || firstRow.hasOwnProperty('random')
+              const hasName = firstRow.hasOwnProperty('Name') || firstRow.hasOwnProperty('name')
+              const hasQR = firstRow.hasOwnProperty('QR Content') || firstRow.hasOwnProperty('QR') || firstRow.hasOwnProperty('qr_content')
+
+              if (!hasRandom || !hasName || !hasQR) {
+                return resolve({ valid: false, error: 'File must contain columns: Random, Name, QR Content' })
+              }
+
+              // Normalize and filter data in one step
+              const normalizedData = data
+                .map((row, index) => {
+                  // Handle null/undefined values gracefully
+                  if (!row || typeof row !== 'object') return null
+                  
+                  return {
+                    id: index + 1,
+                    random: (row.Random || row.random || '').toString().trim(),
+                    name: (row.Name || row.name || '').toString().trim(),
+                    qrContent: (row['QR Content'] || row.QR || row.qr_content || '').toString().trim()
+                  }
+                })
+                .filter(row => row && row.random && row.name && row.qrContent)
+
+              resolve({ valid: true, data: normalizedData })
+            } catch (error) {
+              resolve({ valid: false, error: 'Error processing file data' })
+            }
+          },
+          error: () => {
+            resolve({ valid: false, error: 'Failed to parse CSV file' })
+          }
+        })
+      } catch (error) {
+        resolve({ valid: false, error: 'Failed to process file' })
+      }
     })
-  }
-
-  const validateColumns = (data) => {
-    if (!data || data.length === 0) return { valid: false, error: 'File is empty' }
-    
-    const firstRow = data[0]
-    const hasRandom = firstRow.hasOwnProperty('Random') || firstRow.hasOwnProperty('random')
-    const hasName = firstRow.hasOwnProperty('Name') || firstRow.hasOwnProperty('name')
-    const hasQR = firstRow.hasOwnProperty('QR Content') || firstRow.hasOwnProperty('QR') || firstRow.hasOwnProperty('qr_content')
-
-    if (!hasRandom || !hasName || !hasQR) {
-      return { 
-        valid: false, 
-        error: 'File must contain columns: Random, Name, QR Content' 
-      }
-    }
-
-    return { valid: true }
-  }
-
-  const normalizeData = (data) => {
-    return data.map((row, index) => {
-      const random = row.Random || row.random || ''
-      const name = row.Name || row.name || ''
-      const qrContent = row['QR Content'] || row.QR || row.qr_content || ''
-      
-      return {
-        id: index + 1,
-        random: random.toString().trim(),
-        name: name.toString().trim(),
-        qrContent: qrContent.toString().trim()
-      }
-    }).filter(row => row.random && row.name && row.qrContent) // Filter out incomplete rows
   }
 
   const handleFileSelect = async () => {
@@ -118,36 +92,30 @@ const Upload = () => {
 
       if (!result.canceled && result.assets && result.assets[0]) {
         const file = result.assets[0]
-        const response = await fetch(file.uri)
         
-        if (!file.mimeType === 'text/csv' && !file.name.toLowerCase().endsWith('.csv')) {
+        // Simple file type check
+        if (file.mimeType !== 'text/csv' && !file.name.toLowerCase().endsWith('.csv')) {
           showAlert('Error', 'Please upload a CSV file only.')
           return
         }
 
-        const content = await response.text()
-        const parsedData = await parseCSV(content)
-
-        const validation = validateColumns(parsedData)
-        if (!validation.valid) {
-          showAlert('Invalid File Format', validation.error)
+        const content = await (await fetch(file.uri)).text()
+        const resultData = await processCSVFile(content)
+        
+        if (!resultData.valid) {
+          showAlert('Invalid File Format', resultData.error)
+          return
+        }
+        
+        if (resultData.data.length === 0) {
+          showAlert('Error', 'No valid data found in file.')
           return
         }
 
-        const normalizedData = normalizeData(parsedData)
-        
-        if (normalizedData.length === 0) {
-          showAlert('Error', 'No valid data found in file. Please check that all rows have Random, Name, and QR Content.')
-          return
-        }
-
-        setUploadedFiles([file])
-        updateUploadedData(normalizedData, file.name)
-        
-        showAlert('Success', `File uploaded successfully! Found ${normalizedData.length} valid records.`)
+        updateUploadedData(resultData.data, file.name)
+        showAlert('Success', `File uploaded successfully! Found ${resultData.data.length} valid records.`)
       }
     } catch (error) {
-      console.error('File selection error:', error)
       showAlert('Error', 'Failed to load file. Please try again.')
     } finally {
       setIsLoading(false)
@@ -155,37 +123,11 @@ const Upload = () => {
   }
 
   const handleClearUploads = () => {
-    const clearData = () => {
-      setUploadedFiles([])
-      clearUploadedData()
-    }
-
-    if (Platform.OS === 'web') {
-      // Use native browser confirm dialog for web
-      const confirmed = window.confirm(
-        'Are you sure you want to clear all uploaded files and their content? This action cannot be undone.'
-      )
-      if (confirmed) {
-        clearData()
-      }
-    } else {
-      // Use React Native Alert for mobile
-      Alert.alert(
-        'Clear All Uploads',
-        'Are you sure you want to clear all uploaded files and their content? This action cannot be undone.',
-        [
-          {
-            text: 'Cancel',
-            style: 'cancel',
-          },
-          {
-            text: 'Clear All',
-            style: 'destructive',
-            onPress: clearData,
-          },
-        ]
-      )
-    }
+    showConfirm(
+      'Clear All Uploads',
+      'Are you sure you want to clear all uploaded files and their content? This action cannot be undone.',
+      () => clearUploadedData()
+    )
   }
 
   return (
