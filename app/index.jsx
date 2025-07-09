@@ -1,11 +1,10 @@
 import { StyleSheet, Text, View, TouchableOpacity, Platform } from 'react-native'
 import React, { useState, useRef, useEffect } from 'react'
+import { CameraView } from 'expo-camera'
 import ProfileModal from '../components/ProfileModal'
-import UniversalQRScanner from '../components/UniversalQRScanner'
 import { useData } from '../contexts/DataContext'
 import { useCameraContext } from '../contexts/CameraContext'
 import { getResponsiveDimensions } from '../utils/dimensions'
-import { isWeb } from '../utils/platform'
 
 const Scan = () => {
   const { findMatchByQRContent, hasUploadedData, profile } = useData()
@@ -32,11 +31,6 @@ const Scan = () => {
   }, [])
 
   const handleBarCodeScanned = ({ data }) => {
-    // Debug logging for web scanning
-    if (isWeb) {
-      console.log('Web QR scan detected:', data)
-    }
-
     // Simple debouncing - ignore if same QR scanned recently
     if (lastScanRef.current === data) return
     lastScanRef.current = data
@@ -46,12 +40,11 @@ const Scan = () => {
       clearTimeout(messageTimeoutRef.current)
     }
 
-    // Clear message after 2 seconds (longer for web to account for slower detection)
-    const clearDelay = isWeb ? 3000 : 2000
+    // Clear message after 2 seconds
     messageTimeoutRef.current = setTimeout(() => {
       setMessage('')
       lastScanRef.current = ''
-    }, clearDelay)
+    }, 2000)
 
     if (!hasUploadedData) {
       setMessage('Failure - No data uploaded')
@@ -97,21 +90,44 @@ const Scan = () => {
       {/* Camera Container */}
       <View style={styles.cameraContainer}>
         <View style={styles.cameraFeed}>
-          <UniversalQRScanner
-            onBarcodeScanned={handleBarCodeScanned}
-            cameraStatus={cameraStatus}
-            retryPermissions={retryPermissions}
-            style={styles.camera}
-          />
-          
-          {/* QR Code Outline - only show for native, web handles its own */}
-          {!isWeb && cameraStatus === 'ready' && (
-            <View style={styles.qrOutline}>
-              <View style={[styles.corner, styles.topLeft]} />
-              <View style={[styles.corner, styles.topRight]} />
-              <View style={[styles.corner, styles.bottomLeft]} />
-              <View style={[styles.corner, styles.bottomRight]} />
+          {cameraStatus === 'loading' && (
+            <View style={styles.cameraPlaceholder}>
+              <Text style={styles.placeholderText}>Initializing Camera</Text>
             </View>
+          )}
+          
+          {cameraStatus === 'denied' && (
+            <View style={styles.cameraPlaceholder}>
+              <Text style={styles.placeholderText}>Camera Permission Denied</Text>
+              <Text style={styles.placeholderSubtext}>
+                {Platform.OS === 'web' 
+                  ? 'Allow camera access in browser settings'
+                  : 'Enable camera access in settings'
+                }
+              </Text>
+              <TouchableOpacity style={styles.retryButton} onPress={retryPermissions}>
+                <Text style={styles.retryButtonText}>Retry Permission</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          
+          {cameraStatus === 'ready' && (
+            <>
+              <CameraView
+                style={styles.camera}
+                facing="back"
+                barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+                onBarcodeScanned={handleBarCodeScanned}
+              />
+              
+              {/* QR Code Outline */}
+              <View style={styles.qrOutline}>
+                <View style={[styles.corner, styles.topLeft]} />
+                <View style={[styles.corner, styles.topRight]} />
+                <View style={[styles.corner, styles.bottomLeft]} />
+                <View style={[styles.corner, styles.bottomRight]} />
+              </View>
+            </>
           )}
         </View>
       </View>
@@ -188,7 +204,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     overflow: 'hidden',
   },
-
+  cameraPlaceholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  placeholderText: {
+    color: '#9ca3af',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  placeholderSubtext: {
+    color: '#9ca3af',
+    fontSize: 14,
+    marginTop: 8,
+    textAlign: 'center',
+  },
   camera: {
     flex: 1,
     width: '100%',
@@ -249,5 +279,18 @@ const styles = StyleSheet.create({
   },
   failureText: {
     color: '#dc2626',
+  },
+  retryButton: {
+    backgroundColor: '#2563eb',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 16,
+    minHeight: getResponsiveDimensions().minTouchTarget,
+    justifyContent: 'center',
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 })
