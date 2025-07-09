@@ -1,9 +1,9 @@
 import { StyleSheet, Text, View, TouchableOpacity, Dimensions, Alert, PanResponder, Platform } from 'react-native'
-import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { CameraView, Camera } from 'expo-camera'
-import { useFocusEffect } from 'expo-router'
+import React, { useState, useEffect, useRef } from 'react'
+import { CameraView } from 'expo-camera'
 import ProfileModal from '../components/ProfileModal'
 import { useData } from '../contexts/DataContext'
+import { useCameraContext } from '../contexts/CameraContext'
 import { router } from 'expo-router'
 
 const { width, height } = Dimensions.get('window')
@@ -38,11 +38,11 @@ const getResponsiveDimensions = () => {
 }
 
 const Scan = () => {
-  const { findMatchByQRContent, hasUploadedData, profile } = useData()
+  const { findMatchByQRContent, hasUploadedData, profile, uploadedData } = useData()
+  const { hasPermission, isInitialized, retryPermissions } = useCameraContext()
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState('') // 'success' or 'failure'
   const [showProfileModal, setShowProfileModal] = useState(false)
-  const [hasPermission, setHasPermission] = useState(null)
   const [messageKey, setMessageKey] = useState(0) // For animation trigger
   const [scannedData, setScannedData] = useState(null) // For scan debouncing
   const messageTimeoutRef = useRef(null)
@@ -67,27 +67,13 @@ const Scan = () => {
     })
   ).current
 
-  // Initialize camera on mount
+  // Reset scan state when camera becomes available or app loads
   useEffect(() => {
-    getCameraPermissions()
-  }, [])
-
-  // Reinitialize camera when tab comes into focus (fixes camera breaking after navigation)
-  useFocusEffect(
-    useCallback(() => {
-      console.log('Scan tab focused - reinitializing camera')
-      
-      // Small delay for web browsers to properly handle camera reinitialization
-      const timeoutId = setTimeout(() => {
-        getCameraPermissions()
-      }, Platform.OS === 'web' ? 500 : 100)
-
-      return () => {
-        clearTimeout(timeoutId)
-        console.log('Scan tab unfocused - cleaning up camera')
-      }
-    }, [])
-  )
+    if (hasPermission) {
+      console.log('🎥 Camera ready - resetting scan state')
+      resetScanState()
+    }
+  }, [hasPermission])
 
   useEffect(() => {
     // Cleanup timeout on unmount
@@ -98,32 +84,11 @@ const Scan = () => {
     }
   }, [])
 
-  const getCameraPermissions = async () => {
-    try {
-      console.log('Requesting camera permissions...')
-      const { status } = await Camera.requestCameraPermissionsAsync()
-      console.log('Camera permission status:', status)
-      
-      setHasPermission(status === 'granted')
-      
-      // Clear any previous scan data when camera reinitializes
-      setScannedData(null)
-      lastScanTimeRef.current = 0
-      
-      // For web: if permission was denied, provide clear instructions
-      if (status === 'denied' && Platform.OS === 'web') {
-        console.log('Camera permission denied. User needs to check browser settings.')
-      }
-    } catch (error) {
-      console.error('Camera permission error:', error)
-      setHasPermission(false)
-    }
-  }
-
-  // Add retry function for denied permissions
-  const retryPermissions = () => {
+  // Retry function that uses camera context
+  const handleRetryPermissions = () => {
+    console.log('🎥 User requested permission retry')
     resetScanState() // Clear any previous scan state
-    getCameraPermissions()
+    retryPermissions() // Use context retry function
   }
 
   // Helper function to reset scan state (useful for debugging)
@@ -245,14 +210,21 @@ const Scan = () => {
       {/* Camera Container with QR Outline */}
       <View style={styles.cameraContainer}>
         <View style={styles.cameraFeed}>
-          {hasPermission === null && (
+          {!isInitialized && (
+            <View style={styles.cameraPlaceholder}>
+              <Text style={styles.placeholderText}>Initializing Camera</Text>
+              <Text style={styles.placeholderSubtext}>Setting up camera stream...</Text>
+            </View>
+          )}
+
+          {isInitialized && hasPermission === null && (
             <View style={styles.cameraPlaceholder}>
               <Text style={styles.placeholderText}>Requesting Camera Permission</Text>
               <Text style={styles.placeholderSubtext}>Please allow camera access</Text>
             </View>
           )}
           
-          {hasPermission === false && (
+          {isInitialized && hasPermission === false && (
             <View style={styles.cameraPlaceholder}>
               <Text style={styles.placeholderText}>Camera Permission Denied</Text>
               <Text style={styles.placeholderSubtext}>
@@ -263,7 +235,7 @@ const Scan = () => {
               </Text>
               <TouchableOpacity 
                 style={styles.retryButton} 
-                onPress={retryPermissions}
+                onPress={handleRetryPermissions}
               >
                 <Text style={styles.retryButtonText}>Retry Permission</Text>
               </TouchableOpacity>

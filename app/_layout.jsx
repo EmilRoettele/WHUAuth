@@ -1,10 +1,12 @@
 import { Tabs } from 'expo-router';
 import { Image } from 'react-native';
 import { DataProvider } from '../contexts/DataContext';
+import { CameraProvider } from '../contexts/CameraContext';
 
 export default function TabLayout() {
   return (
-    <DataProvider>
+    <CameraProvider>
+      <DataProvider>
       <Tabs
       initialRouteName="index"
       screenOptions={{
@@ -71,5 +73,6 @@ export default function TabLayout() {
 
     </Tabs>
     </DataProvider>
+    </CameraProvider>
   );
 } 
