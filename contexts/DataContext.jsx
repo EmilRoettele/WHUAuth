@@ -54,15 +54,19 @@ export const DataProvider = ({ children }) => {
     setUploadedData(data)
     setUploadedFileName(fileName)
     
-    // Save to storage
-    try {
-      await Promise.all([
-        AsyncStorage.setItem(STORAGE_KEYS.UPLOADED_DATA, JSON.stringify(data)),
-        AsyncStorage.setItem(STORAGE_KEYS.UPLOADED_FILENAME, fileName)
-      ])
-    } catch (error) {
-      console.error('Error saving uploaded data:', error)
-    }
+    // Save to storage asynchronously without blocking UI
+    setTimeout(async () => {
+      try {
+        console.log('💾 Saving data to storage...')
+        await Promise.all([
+          AsyncStorage.setItem(STORAGE_KEYS.UPLOADED_DATA, JSON.stringify(data)),
+          AsyncStorage.setItem(STORAGE_KEYS.UPLOADED_FILENAME, fileName)
+        ])
+        console.log('✅ Data saved successfully')
+      } catch (error) {
+        console.error('Error saving uploaded data:', error)
+      }
+    }, 0)
   }
 
   const clearUploadedData = async () => {
