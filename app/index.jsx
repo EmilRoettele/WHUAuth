@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View, TouchableOpacity, Dimensions, Alert, PanResponder, Platform } from 'react-native'
+import { StyleSheet, Text, View, TouchableOpacity, Dimensions, Platform } from 'react-native'
 import React, { useState, useEffect, useRef } from 'react'
 import { CameraView } from 'expo-camera'
 import ProfileModal from '../components/ProfileModal'
@@ -38,7 +38,7 @@ const getResponsiveDimensions = () => {
 }
 
 const Scan = () => {
-  const { findMatchByQRContent, hasUploadedData, profile, uploadedData } = useData()
+  const { findMatchByQRContent, hasUploadedData, profile } = useData()
   const { hasPermission, isInitialized, retryPermissions } = useCameraContext()
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState('') // 'success' or 'failure'
@@ -48,24 +48,7 @@ const Scan = () => {
   const messageTimeoutRef = useRef(null)
   const lastScanTimeRef = useRef(0)
 
-  // Swipe navigation
-  const panResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (evt, gestureState) => {
-        // Only activate on horizontal swipes that are significant
-        return Math.abs(gestureState.dx) > 20 && Math.abs(gestureState.dy) < 100
-      },
-      onPanResponderMove: (evt, gestureState) => {
-        // Optional: Add visual feedback during swipe
-      },
-      onPanResponderRelease: (evt, gestureState) => {
-        // Swipe right to go to Upload page
-        if (gestureState.dx > 100 && Math.abs(gestureState.vx) > 0.5) {
-          router.push('/upload')
-        }
-      },
-    })
-  ).current
+
 
   // Reset scan state when camera becomes available or app loads
   useEffect(() => {
@@ -157,24 +140,24 @@ const Scan = () => {
     }
 
     // Enhanced cross-check with better string normalization
-    const matchedRecord = findMatchByQRContent(data)
+    const searchResult = findMatchByQRContent(data)
     
     console.log('QR matching result:', {
       searchData: data,
-      found: !!matchedRecord,
-      matchedRecord: matchedRecord || 'none',
-      totalRecords: uploadedData.length
+      found: searchResult.found,
+      matchedRecord: searchResult.match || 'none',
+      totalRecords: searchResult.totalRecords
     })
     
-    if (matchedRecord) {
-      showMessage(`Success! ${matchedRecord.name}`, 'success')
+    if (searchResult.found) {
+      showMessage(`Success! ${searchResult.match.name}`, 'success')
     } else {
       showMessage('Failure - Not found', 'failure')
     }
   }
 
   return (
-    <View style={styles.container} {...panResponder.panHandlers}>
+    <View style={styles.container}>
       {/* Header */}
       <View style={styles.headerContainer}>
         <View style={styles.header}>

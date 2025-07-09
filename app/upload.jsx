@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Alert, PanResponder, Platform, Dimensions } from 'react-native'
+import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Alert, Platform, Dimensions } from 'react-native'
 import React, { useState, useRef } from 'react'
 import * as DocumentPicker from 'expo-document-picker'
 import Papa from 'papaparse'
@@ -43,24 +43,7 @@ const Upload = () => {
   const [showProfileModal, setShowProfileModal] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
 
-  // Swipe navigation
-  const panResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (evt, gestureState) => {
-        // Only activate on horizontal swipes that are significant
-        return Math.abs(gestureState.dx) > 20 && Math.abs(gestureState.dy) < 100
-      },
-      onPanResponderMove: (evt, gestureState) => {
-        // Optional: Add visual feedback during swipe
-      },
-      onPanResponderRelease: (evt, gestureState) => {
-        // Swipe left to go to Scan page
-        if (gestureState.dx < -100 && Math.abs(gestureState.vx) > 0.5) {
-          router.push('/')
-        }
-      },
-    })
-  ).current
+
 
   const getProfileLetter = () => {
     const name = profile.userName || 'User'
@@ -80,15 +63,9 @@ const Upload = () => {
 
   const parseCSV = (content) => {
     return new Promise((resolve) => {
-      // Use worker mode for non-blocking parsing
       Papa.parse(content, {
         header: true,
         skipEmptyLines: true,
-        worker: Platform.OS === 'web', // Use web worker when available
-        chunk: (results) => {
-          // Allow UI updates between chunks
-          setTimeout(() => {}, 0)
-        },
         complete: (results) => {
           resolve(results.data)
         }
@@ -114,33 +91,19 @@ const Upload = () => {
     return { valid: true }
   }
 
-  const normalizeData = async (data) => {
-    const chunkSize = 100 // Process in chunks to prevent blocking
-    const normalized = []
-    
-    for (let i = 0; i < data.length; i += chunkSize) {
-      const chunk = data.slice(i, i + chunkSize)
+  const normalizeData = (data) => {
+    return data.map((row, index) => {
+      const random = row.Random || row.random || ''
+      const name = row.Name || row.name || ''
+      const qrContent = row['QR Content'] || row.QR || row.qr_content || ''
       
-      const processedChunk = chunk.map((row, index) => {
-        const random = row.Random || row.random || ''
-        const name = row.Name || row.name || ''
-        const qrContent = row['QR Content'] || row.QR || row.qr_content || ''
-        
-        return {
-          id: i + index + 1,
-          random: random.toString().trim(),
-          name: name.toString().trim(),
-          qrContent: qrContent.toString().trim()
-        }
-      }).filter(row => row.random && row.name && row.qrContent)
-      
-      normalized.push(...processedChunk)
-      
-      // Yield control back to UI thread between chunks
-      await new Promise(resolve => setTimeout(resolve, 1))
-    }
-    
-    return normalized
+      return {
+        id: index + 1,
+        random: random.toString().trim(),
+        name: name.toString().trim(),
+        qrContent: qrContent.toString().trim()
+      }
+    }).filter(row => row.random && row.name && row.qrContent) // Filter out incomplete rows
   }
 
   const handleFileSelect = async () => {
@@ -163,9 +126,6 @@ const Upload = () => {
         }
 
         const content = await response.text()
-        
-        // Show progress to user
-        console.log('🔄 Parsing CSV data...')
         const parsedData = await parseCSV(content)
 
         const validation = validateColumns(parsedData)
@@ -174,8 +134,7 @@ const Upload = () => {
           return
         }
 
-        console.log('🔄 Processing data...')
-        const normalizedData = await normalizeData(parsedData)
+        const normalizedData = normalizeData(parsedData)
         
         if (normalizedData.length === 0) {
           showAlert('Error', 'No valid data found in file. Please check that all rows have Random, Name, and QR Content.')
@@ -230,7 +189,7 @@ const Upload = () => {
   }
 
   return (
-    <View style={styles.container} {...panResponder.panHandlers}>
+    <View style={styles.container}>
       <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={styles.headerContainer}>
@@ -300,26 +259,14 @@ const Upload = () => {
                 <Text style={[styles.headerCell, styles.qrColumn]}>QR Content</Text>
               </View>
 
-              {/* Table Rows - Limit initial render to prevent freezing */}
-              {uploadedData.slice(0, Math.min(uploadedData.length, 50)).map((item, index) => (
+              {/* Table Rows */}
+              {uploadedData.map((item, index) => (
                 <View key={item.id} style={[styles.tableRow, index % 2 === 0 && styles.evenRow]}>
                   <Text style={[styles.cell, styles.randomColumn]} numberOfLines={1}>{item.random}</Text>
                   <Text style={[styles.cell, styles.nameColumn]} numberOfLines={1}>{item.name}</Text>
                   <Text style={[styles.cell, styles.qrColumn]} numberOfLines={1}>{item.qrContent}</Text>
                 </View>
               ))}
-              
-              {/* Show load more for large datasets */}
-              {uploadedData.length > 50 && (
-                <View style={styles.loadMoreContainer}>
-                  <Text style={styles.loadMoreText}>
-                    Showing 50 of {uploadedData.length} records
-                  </Text>
-                  <Text style={styles.loadMoreSubtext}>
-                    All data is available for QR scanning
-                  </Text>
-                </View>
-              )}
               </>
             ) : (
               <View style={styles.emptyState}>
@@ -584,23 +531,5 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     textAlign: 'center',
     paddingHorizontal: 20,
-  },
-  loadMoreContainer: {
-    padding: 20,
-    alignItems: 'center',
-    backgroundColor: '#f8f9fa',
-    borderTopWidth: 1,
-    borderTopColor: '#e1e5e9',
-  },
-  loadMoreText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#6b7280',
-    marginBottom: 4,
-  },
-  loadMoreSubtext: {
-    fontSize: 12,
-    color: '#9ca3af',
-    textAlign: 'center',
   },
 })
