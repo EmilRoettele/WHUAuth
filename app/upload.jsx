@@ -1,10 +1,10 @@
-import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Alert, PanResponder, Platform, Dimensions } from 'react-native'
-import React, { useState, useRef } from 'react'
+import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Alert, PanResponder, Platform, Dimensions, TextInput } from 'react-native'
+import React, { useState, useRef, useEffect } from 'react'
 import * as DocumentPicker from 'expo-document-picker'
 import Papa from 'papaparse'
-import ProfileModal from '../components/ProfileModal'
 import { useData } from '../contexts/DataContext'
 import { router } from 'expo-router'
+import csvProcessor from '../utils/BackgroundCSVProcessor'
 
 const { width, height } = Dimensions.get('window')
 
@@ -38,10 +38,85 @@ const getResponsiveDimensions = () => {
 }
 
 const Upload = () => {
-  const { uploadedData, uploadedFileName, updateUploadedData, clearUploadedData, hasUploadedData, profile } = useData()
+  const { 
+    uploadedData, 
+    uploadedFileName, 
+    updateUploadedData, 
+    clearUploadedData, 
+    hasUploadedData, 
+    profile,
+    updateProfile,
+    storageStatus
+  } = useData()
   const [uploadedFiles, setUploadedFiles] = useState([])
-  const [showProfileModal, setShowProfileModal] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [csvProgress, setCSVProgress] = useState({ processing: false, percentage: 0, stage: '' })
+  const [processingStats, setProcessingStats] = useState({ totalRows: 0, validRows: 0, errors: 0 })
+  const [isEditingProfile, setIsEditingProfile] = useState(false)
+  const [profileNameInput, setProfileNameInput] = useState(profile.userName || '')
+
+  // CSV progress tracking
+  useEffect(() => {
+    const handleCSVProgress = (progress) => {
+      console.log('CSV Progress:', progress)
+      
+      switch (progress.status) {
+        case 'started':
+          setCSVProgress({ 
+            processing: true, 
+            percentage: 0, 
+            stage: 'Starting...',
+            fileName: progress.fileName 
+          })
+          break
+          
+        case 'progress':
+          setCSVProgress(prev => ({ 
+            ...prev, 
+            percentage: progress.percentage || 0,
+            stage: progress.chunksTotal 
+              ? `Processing chunk ${progress.chunksProcessed || 0}/${progress.chunksTotal}`
+              : `Processing... ${progress.percentage || 0}%`
+          }))
+          break
+          
+        case 'completed':
+          setCSVProgress({ 
+            processing: false, 
+            percentage: 100, 
+            stage: 'Completed' 
+          })
+          setProcessingStats({
+            totalRows: progress.rowCount || 0,
+            validRows: progress.rowCount || 0,
+            errors: progress.errorCount || 0
+          })
+          break
+          
+        case 'error':
+          setCSVProgress({ 
+            processing: false, 
+            percentage: 0, 
+            stage: 'Error occurred' 
+          })
+          break
+          
+        case 'stopped':
+          setCSVProgress({ 
+            processing: false, 
+            percentage: 0, 
+            stage: 'Stopped' 
+          })
+          break
+      }
+    }
+
+    csvProcessor.addProgressListener('uploadComponent', handleCSVProgress)
+    
+    return () => {
+      csvProcessor.removeProgressListener('uploadComponent')
+    }
+  }, [])
 
   // Swipe navigation
   const panResponder = useRef(
@@ -78,54 +153,19 @@ const Upload = () => {
     }
   }
 
-  const parseCSV = (content) => {
-    return new Promise((resolve) => {
-      Papa.parse(content, {
-        header: true,
-        skipEmptyLines: true,
-        complete: (results) => {
-          resolve(results.data)
-        }
-      })
-    })
-  }
-
-  const validateColumns = (data) => {
-    if (!data || data.length === 0) return { valid: false, error: 'File is empty' }
-    
-    const firstRow = data[0]
-    const hasRandom = firstRow.hasOwnProperty('Random') || firstRow.hasOwnProperty('random')
-    const hasName = firstRow.hasOwnProperty('Name') || firstRow.hasOwnProperty('name')
-    const hasQR = firstRow.hasOwnProperty('QR Content') || firstRow.hasOwnProperty('QR') || firstRow.hasOwnProperty('qr_content')
-
-    if (!hasRandom || !hasName || !hasQR) {
-      return { 
-        valid: false, 
-        error: 'File must contain columns: Random, Name, QR Content' 
-      }
-    }
-
-    return { valid: true }
-  }
-
-  const normalizeData = (data) => {
-    return data.map((row, index) => {
-      const random = row.Random || row.random || ''
-      const name = row.Name || row.name || ''
-      const qrContent = row['QR Content'] || row.QR || row.qr_content || ''
-      
-      return {
-        id: index + 1,
-        random: random.toString().trim(),
-        name: name.toString().trim(),
-        qrContent: qrContent.toString().trim()
-      }
-    }).filter(row => row.random && row.name && row.qrContent) // Filter out incomplete rows
-  }
+  // Legacy CSV parsing functions - now handled by background processor
+  // Keeping for fallback compatibility if needed
 
   const handleFileSelect = async () => {
     try {
+      // Check if CSV processor is busy
+      if (csvProcessor.isProcessing()) {
+        showAlert('Processing', 'A file is currently being processed. Please wait.')
+        return
+      }
+
       setIsLoading(true)
+      setCSVProgress({ processing: false, percentage: 0, stage: 'Selecting file...' })
       
       const result = await DocumentPicker.getDocumentAsync({
         type: ['text/csv'],
@@ -135,39 +175,85 @@ const Upload = () => {
 
       if (!result.canceled && result.assets && result.assets[0]) {
         const file = result.assets[0]
-        const response = await fetch(file.uri)
         
-        if (!file.mimeType === 'text/csv' && !file.name.toLowerCase().endsWith('.csv')) {
+        // Validate file type
+        if (!file.mimeType?.includes('csv') && !file.name.toLowerCase().endsWith('.csv')) {
           showAlert('Error', 'Please upload a CSV file only.')
           return
         }
 
+        // Validate file size (prevent huge files from blocking)
+        const maxSize = 10 * 1024 * 1024 // 10MB limit
+        if (file.size && file.size > maxSize) {
+          showAlert('File Too Large', 'Please upload files smaller than 10MB for optimal performance.')
+          return
+        }
+
+        setCSVProgress({ processing: false, percentage: 0, stage: 'Reading file...' })
+        
+        // Read file content
+        const response = await fetch(file.uri)
         const content = await response.text()
-        const parsedData = await parseCSV(content)
-
-        const validation = validateColumns(parsedData)
-        if (!validation.valid) {
-          showAlert('Invalid File Format', validation.error)
+        
+        if (!content || content.trim().length === 0) {
+          showAlert('Error', 'File appears to be empty.')
           return
         }
 
-        const normalizedData = normalizeData(parsedData)
+        // Process CSV in background
+        setCSVProgress({ processing: true, percentage: 0, stage: 'Processing CSV...' })
+        console.log('Starting background CSV processing...')
         
-        if (normalizedData.length === 0) {
-          showAlert('Error', 'No valid data found in file. Please check that all rows have Random, Name, and QR Content.')
-          return
-        }
+        try {
+          const result = await csvProcessor.processCSV(content, file.name)
+          
+          // Validate the processed data
+          const validation = csvProcessor.validateCSVData(result.data)
+          
+          if (!validation.valid) {
+            showAlert('Invalid File Format', validation.errors.join('\n'))
+            return
+          }
 
-        setUploadedFiles([file])
-        updateUploadedData(normalizedData, file.name)
-        
-        showAlert('Success', `File uploaded successfully! Found ${normalizedData.length} valid records.`)
+          // Show warnings if any
+          if (validation.warnings.length > 0) {
+            console.warn('CSV validation warnings:', validation.warnings)
+          }
+
+          // Normalize the data
+          const normalizedData = csvProcessor.normalizeData(result.data)
+          
+          if (normalizedData.length === 0) {
+            showAlert('Error', 'No valid data found in file. Please check that all rows have Random, Name, and QR Content.')
+            return
+          }
+
+          // Update state and save data (non-blocking)
+          setUploadedFiles([file])
+          await updateUploadedData(normalizedData, file.name)
+          
+          // Show success with detailed stats
+          const stats = validation.stats
+          const successMessage = `File processed successfully!\n\n` +
+            `• Valid records: ${normalizedData.length}\n` +
+            `• Total rows processed: ${stats.totalRows}\n` +
+            (stats.emptyRows > 0 ? `• Empty rows skipped: ${stats.emptyRows}\n` : '') +
+            (stats.duplicateQRs > 0 ? `• Duplicate QRs found: ${stats.duplicateQRs}\n` : '') +
+            (validation.warnings.length > 0 ? `• Warnings: ${validation.warnings.length}` : '')
+            
+          showAlert('Success', successMessage)
+          
+        } catch (processingError) {
+          console.error('CSV processing error:', processingError)
+          showAlert('Processing Error', 'Failed to process CSV file. Please check the file format and try again.')
+        }
       }
     } catch (error) {
       console.error('File selection error:', error)
       showAlert('Error', 'Failed to load file. Please try again.')
     } finally {
       setIsLoading(false)
+      // Don't reset CSV progress here - let it show completion status
     }
   }
 
@@ -214,14 +300,59 @@ const Upload = () => {
             <Text style={styles.title}>Document Upload</Text>
             <Text style={styles.subtitle}>Upload CSV files only</Text>
           </View>
-          <TouchableOpacity 
-            style={styles.profileIcon} 
-            onPress={() => setShowProfileModal(true)}
-          >
-            <View style={styles.profileIconCircle}>
-              <Text style={styles.profileIconText}>{getProfileLetter()}</Text>
+          {isEditingProfile ? (
+            <View style={styles.profileEditContainer}>
+              <TextInput
+                style={styles.profileInlineInput}
+                value={profileNameInput}
+                onChangeText={(text) => {
+                  // Simple validation: 2-20 chars, alphanumeric + spaces only
+                  const sanitized = text.replace(/[^a-zA-Z0-9\s]/g, '').slice(0, 20)
+                  setProfileNameInput(sanitized)
+                }}
+                placeholder="Your name"
+                placeholderTextColor="#9ca3af"
+                autoFocus
+                onSubmitEditing={() => {
+                  if (profileNameInput.trim().length >= 2) {
+                    updateProfile({ userName: profileNameInput.trim() })
+                    setIsEditingProfile(false)
+                  }
+                }}
+                onBlur={() => {
+                  if (profileNameInput.trim().length >= 2) {
+                    updateProfile({ userName: profileNameInput.trim() })
+                  }
+                  setIsEditingProfile(false)
+                }}
+              />
+              <TouchableOpacity 
+                style={styles.profileSaveButton}
+                onPress={() => {
+                  if (profileNameInput.trim().length >= 2) {
+                    updateProfile({ userName: profileNameInput.trim() })
+                    setIsEditingProfile(false)
+                  } else {
+                    showAlert('Invalid Name', 'Name must be at least 2 characters long')
+                  }
+                }}
+              >
+                <Text style={styles.profileSaveText}>✓</Text>
+              </TouchableOpacity>
             </View>
-          </TouchableOpacity>
+          ) : (
+            <TouchableOpacity 
+              style={styles.profileIcon} 
+              onPress={() => {
+                setProfileNameInput(profile.userName || '')
+                setIsEditingProfile(true)
+              }}
+            >
+              <View style={styles.profileIconCircle}>
+                <Text style={styles.profileIconText}>{getProfileLetter()}</Text>
+              </View>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* File Upload Interface */}
@@ -232,17 +363,55 @@ const Upload = () => {
           </View>
           <Text style={styles.uploadText}>Select your data file</Text>
           
+          {/* Progress Indicators */}
+          {(csvProgress.processing || csvProgress.stage) && (
+            <View style={styles.progressContainer}>
+              <Text style={styles.progressStage}>{csvProgress.stage}</Text>
+              {csvProgress.processing && (
+                <View style={styles.progressBarContainer}>
+                  <View style={[styles.progressBar, { width: `${csvProgress.percentage}%` }]} />
+                </View>
+              )}
+              {csvProgress.percentage > 0 && (
+                <Text style={styles.progressPercentage}>{csvProgress.percentage}%</Text>
+              )}
+            </View>
+          )}
+          
+          {/* Storage Status */}
+          {storageStatus.processing && (
+            <View style={styles.storageStatusContainer}>
+              <Text style={styles.storageStatusText}>Saving to storage... ({storageStatus.queueLength} operations)</Text>
+            </View>
+          )}
+          
           <TouchableOpacity 
-            style={[styles.browseButton, isLoading && styles.browseButtonDisabled]} 
+            style={[
+              styles.browseButton, 
+              (isLoading || csvProgress.processing) && styles.browseButtonDisabled
+            ]} 
             onPress={handleFileSelect}
-            disabled={isLoading}
+            disabled={isLoading || csvProgress.processing}
           >
             <Text style={styles.browseButtonText}>
-              {isLoading ? 'Loading...' : 'Select Files'}
+              {csvProgress.processing ? 'Processing...' : 
+               isLoading ? 'Loading...' : 
+               'Select Files'}
             </Text>
           </TouchableOpacity>
           
-          <Text style={styles.supportedFormats}>CSV files only</Text>
+          <Text style={styles.supportedFormats}>CSV files only (max 10MB)</Text>
+          
+          {/* Processing Stats */}
+          {processingStats.totalRows > 0 && (
+            <View style={styles.statsContainer}>
+              <Text style={styles.statsTitle}>Last Processing Results:</Text>
+              <Text style={styles.statsText}>
+                {processingStats.validRows} valid records from {processingStats.totalRows} total rows
+                {processingStats.errors > 0 && ` (${processingStats.errors} errors)`}
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Upload Status / Clear Button */}
@@ -298,10 +467,7 @@ const Upload = () => {
         </View>
       </ScrollView>
 
-      <ProfileModal
-        visible={showProfileModal}
-        onClose={() => setShowProfileModal(false)}
-      />
+      
     </View>
   )
 }
@@ -415,6 +581,72 @@ const styles = StyleSheet.create({
     color: '#888',
     fontStyle: 'italic',
     marginBottom: 16,
+  },
+  progressContainer: {
+    marginVertical: 12,
+    padding: 12,
+    backgroundColor: '#f0f9ff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e1e5e9',
+  },
+  progressStage: {
+    fontSize: 14,
+    color: '#2563eb',
+    fontWeight: '500',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  progressBarContainer: {
+    height: 6,
+    backgroundColor: '#e1e5e9',
+    borderRadius: 3,
+    marginBottom: 8,
+    overflow: 'hidden',
+  },
+  progressBar: {
+    height: '100%',
+    backgroundColor: '#2563eb',
+    borderRadius: 3,
+  },
+  progressPercentage: {
+    fontSize: 12,
+    color: '#2563eb',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  storageStatusContainer: {
+    marginVertical: 8,
+    padding: 8,
+    backgroundColor: '#fff7ed',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+  },
+  storageStatusText: {
+    fontSize: 12,
+    color: '#ea580c',
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  statsContainer: {
+    marginTop: 12,
+    padding: 10,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#e1e5e9',
+  },
+  statsTitle: {
+    fontSize: 13,
+    color: '#333',
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  statsText: {
+    fontSize: 12,
+    color: '#666',
+    lineHeight: 16,
   },
 
   statusContainer: {
@@ -545,5 +777,38 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     textAlign: 'center',
     paddingHorizontal: 20,
+  },
+  profileEditContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 2,
+    borderColor: '#2563eb',
+    minWidth: 120,
+  },
+  profileInlineInput: {
+    flex: 1,
+    fontSize: 14,
+    color: '#333',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    minWidth: 80,
+  },
+  profileSaveButton: {
+    backgroundColor: '#10b981',
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  profileSaveText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
 })
