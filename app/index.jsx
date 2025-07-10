@@ -2,9 +2,13 @@ import { StyleSheet, Text, View, TouchableOpacity, Dimensions, Platform } from '
 import React, { useState, useEffect, useRef } from 'react'
 import { CameraView, Camera } from 'expo-camera'
 import { useFocusEffect } from '@react-navigation/native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import ProfileModal from '../components/ProfileModal'
 
 const { width, height } = Dimensions.get('window')
+
+// Storage key (same as upload page)
+const STORAGE_KEY = 'whuauth_uploaded_data'
 
 // Responsive dimensions that work across platforms
 const getResponsiveDimensions = () => {
@@ -41,6 +45,7 @@ const Scan = () => {
   const [scannedData, setScannedData] = useState('')
   const [isScanning, setIsScanning] = useState(true)
   const [isCameraActive, setIsCameraActive] = useState(false)
+  const [matchResult, setMatchResult] = useState(null) // { success: boolean, message: string }
   const lastScanTime = useRef(0)
 
   // Handle tab focus/blur to manage camera lifecycle
@@ -56,6 +61,7 @@ const Scan = () => {
         console.log('Scan tab unfocused - deactivating camera')
         setIsCameraActive(false)
         setScannedData('')
+        setMatchResult(null)
       }
     }, [])
   )
@@ -76,31 +82,91 @@ const Scan = () => {
     }
   }
 
-  const handleBarcodeScanned = ({ type, data }) => {
+  // Load uploaded data from AsyncStorage
+  const loadUploadedData = async () => {
+    try {
+      const storedData = await AsyncStorage.getItem(STORAGE_KEY)
+      return storedData ? JSON.parse(storedData) : []
+    } catch (error) {
+      console.error('Error loading uploaded data:', error)
+      return []
+    }
+  }
+
+  // Find match in uploaded data
+  const findQRMatch = async (scannedQR) => {
+    const uploadedData = await loadUploadedData()
+    
+    if (!uploadedData || uploadedData.length === 0) {
+      return { success: false, message: 'Failure! No data uploaded' }
+    }
+
+    // Normalize scanned QR for comparison
+    const normalizedScanned = scannedQR.toString().trim().toLowerCase()
+    
+    // Search for match in QR Content columns
+    for (const row of uploadedData) {
+      const columns = Object.keys(row)
+      
+      // Find QR Content column
+      const qrColumn = columns.find(col => 
+        col.toLowerCase().includes('qr content')
+      )
+      
+      if (qrColumn && row[qrColumn]) {
+        const normalizedRow = row[qrColumn].toString().trim().toLowerCase()
+        
+        if (normalizedRow === normalizedScanned) {
+          // Found match - get name from same row
+          const nameColumn = columns.find(col => 
+            col.toLowerCase().includes('name')
+          )
+          const name = nameColumn ? row[nameColumn] : 'Unknown'
+          
+          return { success: true, message: `Success! ${name}` }
+        }
+      }
+    }
+    
+    return { success: false, message: 'Failure! No Match!' }
+  }
+
+  const handleBarcodeScanned = async ({ type, data }) => {
+    // Internal scanning logic - camera stream stays continuous
     if (!isCameraActive || !isScanning) {
-      return
+      return // Ignore scan but keep camera stream active
     }
 
     const currentTime = Date.now()
     
     // Debounce scanning - prevent duplicate scans within 2 seconds
     if (currentTime - lastScanTime.current < 2000) {
-      return
+      return // Ignore scan but keep camera stream active
     }
     
     lastScanTime.current = currentTime
-    setScannedData(data)
-    setIsScanning(false)
     
     console.log('QR Code scanned:', data)
     
-    // Re-enable scanning after 3 seconds
+    // Perform cross-reference check
+    const result = await findQRMatch(data)
+    
+    // Batch state updates to reduce lag
+    setScannedData(data)
+    setMatchResult(result)
+    setIsScanning(false)
+    
+    console.log('Match result:', result)
+    
+    // Re-enable scanning after 1 second
     setTimeout(() => {
       if (isCameraActive) {
+        // Batch reset state updates
         setIsScanning(true)
         setScannedData('')
+        setMatchResult(null)
       }
-    }, 3000)
+    }, 1000)
   }
 
   const getProfileLetter = () => {
@@ -143,7 +209,7 @@ const Scan = () => {
         barcodeScannerSettings={{
           barcodeTypes: ["qr"],
         }}
-        onBarcodeScanned={isScanning ? handleBarcodeScanned : undefined}
+        onBarcodeScanned={handleBarcodeScanned}
       />
     )
   }
@@ -168,9 +234,17 @@ const Scan = () => {
 
       {/* Scan Result */}
       <View style={styles.messageSpace}>
-        {scannedData && (
-          <View style={styles.resultContainer}>
-            <Text style={styles.resultText}>Scanned: {scannedData}</Text>
+        {matchResult && (
+          <View style={[
+            styles.resultContainer,
+            matchResult.success ? styles.successContainer : styles.failureContainer
+          ]}>
+            <Text style={[
+              styles.resultText,
+              matchResult.success ? styles.successText : styles.failureText
+            ]}>
+              {matchResult.message}
+            </Text>
           </View>
         )}
       </View>
@@ -190,18 +264,6 @@ const Scan = () => {
             <View style={[styles.scannerCorner, styles.bottomRight]} />
           </View>
         )}
-      </View>
-
-      {/* Help Text */}
-      <View style={styles.helpContainer}>
-        <Text style={styles.helpText}>
-          {!isCameraActive 
-            ? 'Camera paused' 
-            : isScanning 
-              ? 'Scan QR codes for quick access' 
-              : 'Scanning paused...'
-          }
-        </Text>
       </View>
 
       <ProfileModal
@@ -265,25 +327,37 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   resultContainer: {
-    backgroundColor: '#e0f2fe',
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#0277bd',
+  },
+  successContainer: {
+    backgroundColor: '#d1fae5',
+    borderColor: '#10b981',
+  },
+  failureContainer: {
+    backgroundColor: '#fee2e2',
+    borderColor: '#ef4444',
   },
   resultText: {
     fontSize: 14,
-    color: '#01579b',
     fontWeight: '500',
     textAlign: 'center',
+  },
+  successText: {
+    color: '#065f46',
+  },
+  failureText: {
+    color: '#991b1b',
   },
   cameraContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
-    marginBottom: 20,
+    marginTop: 20,
+    marginBottom: 50,
   },
   cameraFrame: {
     width: getResponsiveDimensions().contentWidth,
@@ -354,14 +428,5 @@ const styles = StyleSheet.create({
     right: 0,
     borderLeftWidth: 0,
     borderTopWidth: 0,
-  },
-  helpContainer: {
-    alignItems: 'center',
-    paddingVertical: 20,
-  },
-  helpText: {
-    fontSize: 16,
-    color: '#6b7280',
-    textAlign: 'center',
   },
 })

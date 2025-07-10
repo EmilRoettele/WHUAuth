@@ -2,9 +2,13 @@ import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Platform, Dimensi
 import React, { useState } from 'react'
 import * as DocumentPicker from 'expo-document-picker'
 import Papa from 'papaparse'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import ProfileModal from '../components/ProfileModal'
 
 const { width, height } = Dimensions.get('window')
+
+// Storage key (same as scan page)
+const STORAGE_KEY = 'whuauth_uploaded_data'
 
 // Responsive dimensions that work across platforms (shared with Scan page)
 const getResponsiveDimensions = () => {
@@ -132,9 +136,13 @@ const Upload = () => {
           return
         }
 
-        // Store data as-is
+        // Store data as-is in state and AsyncStorage
         setUploadedData(parsedData)
         setUploadedFileName(file.name)
+        
+        // Save to AsyncStorage for cross-page access
+        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(parsedData))
+        console.log('Data saved to AsyncStorage:', parsedData.length, 'records')
         
         showAlert('Success', `File uploaded successfully! Found ${parsedData.length} records.`)
       }
@@ -150,9 +158,14 @@ const Upload = () => {
     showConfirm(
       'Remove File',
       'Are you sure you want to remove the uploaded file?',
-      () => {
+      async () => {
+        // Clear state
         setUploadedData([])
         setUploadedFileName('')
+        
+        // Clear AsyncStorage
+        await AsyncStorage.removeItem(STORAGE_KEY)
+        console.log('Data cleared from AsyncStorage')
       }
     )
   }
