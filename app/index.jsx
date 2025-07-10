@@ -1,5 +1,6 @@
 import { StyleSheet, Text, View, TouchableOpacity, Dimensions, Platform } from 'react-native'
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
+import { CameraView, Camera } from 'expo-camera'
 import ProfileModal from '../components/ProfileModal'
 
 const { width, height } = Dimensions.get('window')
@@ -35,9 +36,80 @@ const getResponsiveDimensions = () => {
 
 const Scan = () => {
   const [showProfileModal, setShowProfileModal] = useState(false)
+  const [hasPermission, setHasPermission] = useState(null)
+  const [scannedData, setScannedData] = useState('')
+  const [isScanning, setIsScanning] = useState(true)
+  const lastScanTime = useRef(0)
+
+  useEffect(() => {
+    requestCameraPermission()
+  }, [])
+
+  const requestCameraPermission = async () => {
+    try {
+      const { status } = await Camera.requestCameraPermissionsAsync()
+      setHasPermission(status === 'granted')
+    } catch (error) {
+      console.error('Camera permission error:', error)
+      setHasPermission(false)
+    }
+  }
+
+  const handleBarcodeScanned = ({ type, data }) => {
+    const currentTime = Date.now()
+    
+    // Debounce scanning - prevent duplicate scans within 2 seconds
+    if (currentTime - lastScanTime.current < 2000) {
+      return
+    }
+    
+    lastScanTime.current = currentTime
+    setScannedData(data)
+    setIsScanning(false)
+    
+    console.log('QR Code scanned:', data)
+    
+    // Re-enable scanning after 3 seconds
+    setTimeout(() => {
+      setIsScanning(true)
+      setScannedData('')
+    }, 3000)
+  }
 
   const getProfileLetter = () => {
     return 'U' // Default profile letter
+  }
+
+  const renderCamera = () => {
+    if (hasPermission === null) {
+      return (
+        <View style={styles.cameraPlaceholder}>
+          <Text style={styles.placeholderText}>Requesting camera permission...</Text>
+        </View>
+      )
+    }
+    
+    if (hasPermission === false) {
+      return (
+        <View style={styles.cameraPlaceholder}>
+          <Text style={styles.placeholderText}>Camera access denied</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={requestCameraPermission}>
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      )
+    }
+
+    return (
+      <CameraView
+        style={styles.camera}
+        facing="back"
+        barcodeScannerSettings={{
+          barcodeTypes: ["qr"],
+        }}
+        onBarcodeScanned={isScanning ? handleBarcodeScanned : undefined}
+      />
+    )
   }
 
   return (
@@ -58,30 +130,37 @@ const Scan = () => {
         </TouchableOpacity>
       </View>
 
-      {/* Message Space */}
+      {/* Scan Result */}
       <View style={styles.messageSpace}>
-        {/* Placeholder for messages */}
+        {scannedData && (
+          <View style={styles.resultContainer}>
+            <Text style={styles.resultText}>Scanned: {scannedData}</Text>
+          </View>
+        )}
       </View>
 
       {/* Camera/Scanner Area */}
       <View style={styles.cameraContainer}>
-        <View style={styles.mockCamera}>
-          <Text style={styles.mockCameraText}>Camera Scanner UI</Text>
-          <Text style={styles.mockCameraSubtext}>Mock camera interface</Text>
+        <View style={styles.cameraFrame}>
+          {renderCamera()}
         </View>
         
-        {/* Scanner Frame */}
-        <View style={styles.scannerFrame}>
-          <View style={[styles.scannerCorner, styles.topLeft]} />
-          <View style={[styles.scannerCorner, styles.topRight]} />
-          <View style={[styles.scannerCorner, styles.bottomLeft]} />
-          <View style={[styles.scannerCorner, styles.bottomRight]} />
-        </View>
+        {/* Scanner Frame Overlay */}
+        {hasPermission && (
+          <View style={styles.scannerFrame}>
+            <View style={[styles.scannerCorner, styles.topLeft]} />
+            <View style={[styles.scannerCorner, styles.topRight]} />
+            <View style={[styles.scannerCorner, styles.bottomLeft]} />
+            <View style={[styles.scannerCorner, styles.bottomRight]} />
+          </View>
+        )}
       </View>
 
       {/* Help Text */}
       <View style={styles.helpContainer}>
-        <Text style={styles.helpText}>Scan QR codes for quick access</Text>
+        <Text style={styles.helpText}>
+          {isScanning ? 'Scan QR codes for quick access' : 'Scanning paused...'}
+        </Text>
       </View>
 
       <ProfileModal
@@ -144,6 +223,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  resultContainer: {
+    backgroundColor: '#e0f2fe',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#0277bd',
+  },
+  resultText: {
+    fontSize: 14,
+    color: '#01579b',
+    fontWeight: '500',
+    textAlign: 'center',
+  },
   cameraContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -151,25 +244,39 @@ const styles = StyleSheet.create({
     position: 'relative',
     marginBottom: 20,
   },
-  mockCamera: {
+  cameraFrame: {
     width: getResponsiveDimensions().contentWidth,
     height: getResponsiveDimensions().contentWidth,
-    backgroundColor: '#e5e7eb',
     borderRadius: 20,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+  },
+  camera: {
+    flex: 1,
+    width: '100%',
+  },
+  cameraPlaceholder: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#d1d5db',
+    backgroundColor: '#e5e7eb',
   },
-  mockCameraText: {
-    fontSize: 18,
-    fontWeight: 'bold',
+  placeholderText: {
+    fontSize: 16,
     color: '#6b7280',
-    marginBottom: 8,
+    textAlign: 'center',
+    marginBottom: 16,
   },
-  mockCameraSubtext: {
-    fontSize: 14,
-    color: '#9ca3af',
+  retryButton: {
+    backgroundColor: '#2563eb',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   scannerFrame: {
     position: 'absolute',

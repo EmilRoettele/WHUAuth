@@ -1,5 +1,5 @@
-import { StyleSheet, Text, View, TouchableOpacity, Modal, Animated, Platform } from 'react-native'
-import React, { useState, useRef } from 'react'
+import { StyleSheet, Text, View, TouchableOpacity, Modal, Animated } from 'react-native'
+import React, { useRef } from 'react'
 
 const ProfileModal = ({ visible, onClose }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current
@@ -48,13 +48,6 @@ const ProfileModal = ({ visible, onClose }) => {
               <Text style={styles.avatarText}>{getAvatarLetter()}</Text>
             </View>
             <Text style={styles.userName}>User</Text>
-          </View>
-
-          {/* Simple Storage Message */}
-          <View style={styles.storageInfo}>
-            <Text style={styles.storageText}>
-              📱 Data stored locally on this device
-            </Text>
           </View>
         </Animated.View>
       </View>
@@ -130,17 +123,5 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#374151',
     textAlign: 'center',
-  },
-  storageInfo: {
-    backgroundColor: '#f8f9fa',
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  storageText: {
-    fontSize: 12,
-    color: '#6b7280',
-    textAlign: 'center',
-    lineHeight: 16,
   },
 }) 
