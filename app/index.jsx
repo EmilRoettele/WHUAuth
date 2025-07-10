@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View, TouchableOpacity, Dimensions, Platform } from 'react-native'
 import React, { useState, useEffect, useRef } from 'react'
 import { CameraView, Camera } from 'expo-camera'
+import { useFocusEffect } from '@react-navigation/native'
 import ProfileModal from '../components/ProfileModal'
 
 const { width, height } = Dimensions.get('window')
@@ -39,7 +40,25 @@ const Scan = () => {
   const [hasPermission, setHasPermission] = useState(null)
   const [scannedData, setScannedData] = useState('')
   const [isScanning, setIsScanning] = useState(true)
+  const [isCameraActive, setIsCameraActive] = useState(false)
   const lastScanTime = useRef(0)
+
+  // Handle tab focus/blur to manage camera lifecycle
+  useFocusEffect(
+    React.useCallback(() => {
+      // When tab becomes focused
+      console.log('Scan tab focused - activating camera')
+      setIsCameraActive(true)
+      setIsScanning(true)
+      
+      return () => {
+        // When tab loses focus
+        console.log('Scan tab unfocused - deactivating camera')
+        setIsCameraActive(false)
+        setScannedData('')
+      }
+    }, [])
+  )
 
   useEffect(() => {
     requestCameraPermission()
@@ -47,7 +66,9 @@ const Scan = () => {
 
   const requestCameraPermission = async () => {
     try {
+      console.log('Requesting camera permission...')
       const { status } = await Camera.requestCameraPermissionsAsync()
+      console.log('Camera permission status:', status)
       setHasPermission(status === 'granted')
     } catch (error) {
       console.error('Camera permission error:', error)
@@ -56,6 +77,10 @@ const Scan = () => {
   }
 
   const handleBarcodeScanned = ({ type, data }) => {
+    if (!isCameraActive || !isScanning) {
+      return
+    }
+
     const currentTime = Date.now()
     
     // Debounce scanning - prevent duplicate scans within 2 seconds
@@ -71,8 +96,10 @@ const Scan = () => {
     
     // Re-enable scanning after 3 seconds
     setTimeout(() => {
-      setIsScanning(true)
-      setScannedData('')
+      if (isCameraActive) {
+        setIsScanning(true)
+        setScannedData('')
+      }
     }, 3000)
   }
 
@@ -81,6 +108,15 @@ const Scan = () => {
   }
 
   const renderCamera = () => {
+    // Don't render camera if tab is not active
+    if (!isCameraActive) {
+      return (
+        <View style={styles.cameraPlaceholder}>
+          <Text style={styles.placeholderText}>Camera paused</Text>
+        </View>
+      )
+    }
+
     if (hasPermission === null) {
       return (
         <View style={styles.cameraPlaceholder}>
@@ -146,7 +182,7 @@ const Scan = () => {
         </View>
         
         {/* Scanner Frame Overlay */}
-        {hasPermission && (
+        {hasPermission && isCameraActive && (
           <View style={styles.scannerFrame}>
             <View style={[styles.scannerCorner, styles.topLeft]} />
             <View style={[styles.scannerCorner, styles.topRight]} />
@@ -159,7 +195,12 @@ const Scan = () => {
       {/* Help Text */}
       <View style={styles.helpContainer}>
         <Text style={styles.helpText}>
-          {isScanning ? 'Scan QR codes for quick access' : 'Scanning paused...'}
+          {!isCameraActive 
+            ? 'Camera paused' 
+            : isScanning 
+              ? 'Scan QR codes for quick access' 
+              : 'Scanning paused...'
+          }
         </Text>
       </View>
 
