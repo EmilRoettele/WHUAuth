@@ -1,9 +1,7 @@
 import { StyleSheet, Text, View, TouchableOpacity, Modal, Animated, Platform } from 'react-native'
 import React, { useState, useRef } from 'react'
-import { useData } from '../contexts/DataContext'
 
 const ProfileModal = ({ visible, onClose }) => {
-  const { profile } = useData()
   const fadeAnim = useRef(new Animated.Value(0)).current
 
   React.useEffect(() => {
@@ -22,9 +20,8 @@ const ProfileModal = ({ visible, onClose }) => {
     }
   }, [visible, fadeAnim])
 
-  const getProfileLetter = () => {
-    const name = profile.userName || 'User'
-    return name.charAt(0).toUpperCase()
+  const getAvatarLetter = () => {
+    return 'U' // Default profile letter
   }
 
   return (
@@ -48,11 +45,9 @@ const ProfileModal = ({ visible, onClose }) => {
           {/* Profile Icon and Name */}
           <View style={styles.profileHeader}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{getProfileLetter()}</Text>
+              <Text style={styles.avatarText}>{getAvatarLetter()}</Text>
             </View>
-            <Text style={styles.userName}>
-              {profile.userName || 'User'}
-            </Text>
+            <Text style={styles.userName}>User</Text>
           </View>
 
           {/* Simple Storage Message */}

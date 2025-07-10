@@ -1,13 +1,9 @@
 import { Tabs } from 'expo-router';
 import { Image } from 'react-native';
-import { DataProvider } from '../contexts/DataContext';
-import { CameraProvider } from '../contexts/CameraContext';
 
 export default function TabLayout() {
   return (
-    <CameraProvider>
-      <DataProvider>
-      <Tabs
+    <Tabs
       initialRouteName="index"
       screenOptions={{
         tabBarActiveTintColor: '#007AFF',
@@ -70,9 +66,6 @@ export default function TabLayout() {
           ),
         }}
       />
-
     </Tabs>
-    </DataProvider>
-    </CameraProvider>
   );
 } 

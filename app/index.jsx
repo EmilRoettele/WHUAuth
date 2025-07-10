@@ -1,61 +1,43 @@
-import { StyleSheet, Text, View, TouchableOpacity, Platform } from 'react-native'
-import React, { useState, useRef, useEffect } from 'react'
-import { CameraView } from 'expo-camera'
+import { StyleSheet, Text, View, TouchableOpacity, Dimensions, Platform } from 'react-native'
+import React, { useState } from 'react'
 import ProfileModal from '../components/ProfileModal'
-import { useData } from '../contexts/DataContext'
-import { useCameraContext } from '../contexts/CameraContext'
-import { getResponsiveDimensions } from '../utils/dimensions'
+
+const { width, height } = Dimensions.get('window')
+
+// Responsive dimensions that work across platforms
+const getResponsiveDimensions = () => {
+  const isWeb = Platform.OS === 'web'
+  const isTablet = width > 768
+  
+  return {
+    // Horizontal padding based on screen size
+    horizontalPadding: isWeb ? (isTablet ? 40 : 20) : 20,
+    
+    // Top padding consistent across pages, responsive to platform
+    topPadding: isWeb ? (isTablet ? 60 : 40) : 50,
+    
+    // Camera/content width that's responsive
+    contentWidth: isWeb 
+      ? Math.min(width - (isTablet ? 120 : 80), 400) // Max 400px on web, responsive padding
+      : width - 60, // Native mobile keeps current behavior
+      
+    // Bottom padding for tab bar
+    bottomPadding: 140,
+    
+    // Responsive font sizes
+    titleFontSize: isWeb ? (isTablet ? 28 : 24) : 24,
+    subtitleFontSize: isWeb ? (isTablet ? 18 : 16) : 16,
+    
+    // Touch target improvements
+    minTouchTarget: 44 // iOS HIG minimum touch target
+  }
+}
 
 const Scan = () => {
-  const { findMatchByQRContent, hasUploadedData, profile } = useData()
-  const { cameraStatus, retryPermissions } = useCameraContext()
-  
-  // Simplified state - just message and profile modal
-  const [message, setMessage] = useState('')
   const [showProfileModal, setShowProfileModal] = useState(false)
-  const lastScanRef = useRef('')
-  const messageTimeoutRef = useRef(null)
 
   const getProfileLetter = () => {
-    const name = profile.userName || 'User'
-    return name.charAt(0).toUpperCase()
-  }
-
-  // Cleanup timeout on unmount to prevent memory leaks
-  useEffect(() => {
-    return () => {
-      if (messageTimeoutRef.current) {
-        clearTimeout(messageTimeoutRef.current)
-      }
-    }
-  }, [])
-
-  const handleBarCodeScanned = ({ data }) => {
-    // Simple debouncing - ignore if same QR scanned recently
-    if (lastScanRef.current === data) return
-    lastScanRef.current = data
-
-    // Clear any existing timeout
-    if (messageTimeoutRef.current) {
-      clearTimeout(messageTimeoutRef.current)
-    }
-
-    // Clear message after 2 seconds
-    messageTimeoutRef.current = setTimeout(() => {
-      setMessage('')
-      lastScanRef.current = ''
-    }, 2000)
-
-    if (!hasUploadedData) {
-      setMessage('Failure - No data uploaded')
-      return
-    }
-
-    const searchResult = findMatchByQRContent(data)
-    setMessage(searchResult.found 
-      ? `Success! ${searchResult.match.name}` 
-      : 'Failure - Not found'
-    )
+    return 'U' // Default profile letter
   }
 
   return (
@@ -76,60 +58,30 @@ const Scan = () => {
         </TouchableOpacity>
       </View>
 
-      {/* Simple Message */}
-      {message && (
-        <View style={styles.messageContainer}>
-          <Text style={[styles.messageText, 
-            message.includes('Success') ? styles.successText : styles.failureText
-          ]}>
-            {message}
-          </Text>
-        </View>
-      )}
+      {/* Message Space */}
+      <View style={styles.messageSpace}>
+        {/* Placeholder for messages */}
+      </View>
 
-      {/* Camera Container */}
+      {/* Camera/Scanner Area */}
       <View style={styles.cameraContainer}>
-        <View style={styles.cameraFeed}>
-          {cameraStatus === 'loading' && (
-            <View style={styles.cameraPlaceholder}>
-              <Text style={styles.placeholderText}>Initializing Camera</Text>
-            </View>
-          )}
-          
-          {cameraStatus === 'denied' && (
-            <View style={styles.cameraPlaceholder}>
-              <Text style={styles.placeholderText}>Camera Permission Denied</Text>
-              <Text style={styles.placeholderSubtext}>
-                {Platform.OS === 'web' 
-                  ? 'Allow camera access in browser settings'
-                  : 'Enable camera access in settings'
-                }
-              </Text>
-              <TouchableOpacity style={styles.retryButton} onPress={retryPermissions}>
-                <Text style={styles.retryButtonText}>Retry Permission</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-          
-          {cameraStatus === 'ready' && (
-            <>
-              <CameraView
-                style={styles.camera}
-                facing="back"
-                barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-                onBarcodeScanned={handleBarCodeScanned}
-              />
-              
-              {/* QR Code Outline */}
-              <View style={styles.qrOutline}>
-                <View style={[styles.corner, styles.topLeft]} />
-                <View style={[styles.corner, styles.topRight]} />
-                <View style={[styles.corner, styles.bottomLeft]} />
-                <View style={[styles.corner, styles.bottomRight]} />
-              </View>
-            </>
-          )}
+        <View style={styles.mockCamera}>
+          <Text style={styles.mockCameraText}>Camera Scanner UI</Text>
+          <Text style={styles.mockCameraSubtext}>Mock camera interface</Text>
         </View>
+        
+        {/* Scanner Frame */}
+        <View style={styles.scannerFrame}>
+          <View style={[styles.scannerCorner, styles.topLeft]} />
+          <View style={[styles.scannerCorner, styles.topRight]} />
+          <View style={[styles.scannerCorner, styles.bottomLeft]} />
+          <View style={[styles.scannerCorner, styles.bottomRight]} />
+        </View>
+      </View>
+
+      {/* Help Text */}
+      <View style={styles.helpContainer}>
+        <Text style={styles.helpText}>Scan QR codes for quick access</Text>
       </View>
 
       <ProfileModal
@@ -154,7 +106,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 30,
+    marginBottom: 20,
   },
   header: {
     flex: 1,
@@ -185,55 +137,51 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: getResponsiveDimensions().subtitleFontSize,
     color: '#666',
-    textAlign: 'left', // Consistent left alignment for both pages
+  },
+  messageSpace: {
+    height: 60,
+    marginBottom: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   cameraContainer: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 20,
-    marginBottom: 40,
+    position: 'relative',
+    marginBottom: 20,
   },
-  cameraFeed: {
+  mockCamera: {
     width: getResponsiveDimensions().contentWidth,
     height: getResponsiveDimensions().contentWidth,
-    backgroundColor: '#f8f9fa',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    position: 'relative',
+    backgroundColor: '#e5e7eb',
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: '#d1d5db',
   },
-  cameraPlaceholder: {
-    justifyContent: 'center',
-    alignItems: 'center',
+  mockCameraText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#6b7280',
+    marginBottom: 8,
   },
-  placeholderText: {
-    color: '#9ca3af',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  placeholderSubtext: {
-    color: '#9ca3af',
+  mockCameraSubtext: {
     fontSize: 14,
-    marginTop: 8,
-    textAlign: 'center',
+    color: '#9ca3af',
   },
-  camera: {
-    flex: 1,
-    width: '100%',
-  },
-  qrOutline: {
+  scannerFrame: {
     position: 'absolute',
-    width: 200,
-    height: 200,
+    width: getResponsiveDimensions().contentWidth * 0.7,
+    height: getResponsiveDimensions().contentWidth * 0.7,
   },
-  corner: {
+  scannerCorner: {
     position: 'absolute',
     width: 20,
     height: 20,
-    borderColor: '#2563eb',
-    borderWidth: 2,
+    borderColor: '#fff',
+    borderWidth: 3,
   },
   topLeft: {
     top: 0,
@@ -259,38 +207,13 @@ const styles = StyleSheet.create({
     borderLeftWidth: 0,
     borderTopWidth: 0,
   },
-  messageContainer: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    marginHorizontal: 20,
-    marginBottom: 20,
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
+  helpContainer: {
+    alignItems: 'center',
+    paddingVertical: 20,
   },
-  messageText: {
+  helpText: {
     fontSize: 16,
-    fontWeight: '500',
+    color: '#6b7280',
     textAlign: 'center',
-  },
-  successText: {
-    color: '#059669',
-  },
-  failureText: {
-    color: '#dc2626',
-  },
-  retryButton: {
-    backgroundColor: '#2563eb',
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 16,
-    minHeight: getResponsiveDimensions().minTouchTarget,
-    justifyContent: 'center',
-  },
-  retryButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
   },
 })

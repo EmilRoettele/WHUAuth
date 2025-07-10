@@ -1,133 +1,60 @@
-import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Platform } from 'react-native'
-import React, { useState, useRef } from 'react'
-import * as DocumentPicker from 'expo-document-picker'
-import Papa from 'papaparse'
+import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Platform, Dimensions } from 'react-native'
+import React, { useState } from 'react'
 import ProfileModal from '../components/ProfileModal'
-import { useData } from '../contexts/DataContext'
-import { getResponsiveDimensions } from '../utils/dimensions'
-import { showAlert, showConfirm } from '../utils/alerts'
+
+const { width, height } = Dimensions.get('window')
+
+// Responsive dimensions that work across platforms (shared with Scan page)
+const getResponsiveDimensions = () => {
+  const isWeb = Platform.OS === 'web'
+  const isTablet = width > 768
+  
+  return {
+    // Horizontal padding based on screen size
+    horizontalPadding: isWeb ? (isTablet ? 40 : 20) : 20,
+    
+    // Top padding consistent across pages, responsive to platform
+    topPadding: isWeb ? (isTablet ? 60 : 40) : 50,
+    
+    // Content width that's responsive
+    contentWidth: isWeb 
+      ? Math.min(width - (isTablet ? 120 : 80), 400) // Max 400px on web, responsive padding
+      : width - 60, // Native mobile keeps current behavior
+      
+    // Bottom padding for tab bar
+    bottomPadding: 140,
+    
+    // Responsive font sizes
+    titleFontSize: isWeb ? (isTablet ? 28 : 24) : 24,
+    subtitleFontSize: isWeb ? (isTablet ? 18 : 16) : 16,
+    
+    // Touch target improvements
+    minTouchTarget: 44 // iOS HIG minimum touch target
+  }
+}
 
 const Upload = () => {
-  const { uploadedData, uploadedFileName, updateUploadedData, clearUploadedData, hasUploadedData, profile } = useData()
   const [showProfileModal, setShowProfileModal] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
 
   const getProfileLetter = () => {
-    const name = profile.userName || 'User'
-    return name.charAt(0).toUpperCase()
+    return 'U' // Default profile letter
   }
 
+  // Mock data for display
+  const mockData = [
+    { id: 1, random: 'ABC123', name: 'John Doe', qrContent: 'sample-qr-1' },
+    { id: 2, random: 'DEF456', name: 'Jane Smith', qrContent: 'sample-qr-2' },
+    { id: 3, random: 'GHI789', name: 'Bob Johnson', qrContent: 'sample-qr-3' },
+  ]
 
-
-  // Streamlined CSV processing - parse, validate, and normalize in one step
-  const processCSVFile = (content) => {
-    return new Promise((resolve) => {
-      try {
-        Papa.parse(content, {
-          header: true,
-          skipEmptyLines: true,
-          complete: (results) => {
-            try {
-              const data = results.data
-              
-              // Quick validation
-              if (!data || data.length === 0) {
-                return resolve({ valid: false, error: 'File is empty' })
-              }
-              
-              // Check if first row exists and has properties
-              const firstRow = data[0]
-              if (!firstRow || typeof firstRow !== 'object') {
-                return resolve({ valid: false, error: 'Invalid file format' })
-              }
-              
-              // Check required columns exist
-              const hasRandom = firstRow.hasOwnProperty('Random') || firstRow.hasOwnProperty('random')
-              const hasName = firstRow.hasOwnProperty('Name') || firstRow.hasOwnProperty('name')
-              const hasQR = firstRow.hasOwnProperty('QR Content') || firstRow.hasOwnProperty('QR') || firstRow.hasOwnProperty('qr_content')
-
-              if (!hasRandom || !hasName || !hasQR) {
-                return resolve({ valid: false, error: 'File must contain columns: Random, Name, QR Content' })
-              }
-
-              // Normalize and filter data in one step
-              const normalizedData = data
-                .map((row, index) => {
-                  // Handle null/undefined values gracefully
-                  if (!row || typeof row !== 'object') return null
-                  
-                  return {
-                    id: index + 1,
-                    random: (row.Random || row.random || '').toString().trim(),
-                    name: (row.Name || row.name || '').toString().trim(),
-                    qrContent: (row['QR Content'] || row.QR || row.qr_content || '').toString().trim()
-                  }
-                })
-                .filter(row => row && row.random && row.name && row.qrContent)
-
-              resolve({ valid: true, data: normalizedData })
-            } catch (error) {
-              resolve({ valid: false, error: 'Error processing file data' })
-            }
-          },
-          error: () => {
-            resolve({ valid: false, error: 'Failed to parse CSV file' })
-          }
-        })
-      } catch (error) {
-        resolve({ valid: false, error: 'Failed to process file' })
-      }
-    })
-  }
-
-  const handleFileSelect = async () => {
-    try {
-      setIsLoading(true)
-      
-      const result = await DocumentPicker.getDocumentAsync({
-        type: ['text/csv'],
-        copyToCacheDirectory: true,
-        multiple: false,
-      })
-
-      if (!result.canceled && result.assets && result.assets[0]) {
-        const file = result.assets[0]
-        
-        // Simple file type check
-        if (file.mimeType !== 'text/csv' && !file.name.toLowerCase().endsWith('.csv')) {
-          showAlert('Error', 'Please upload a CSV file only.')
-          return
-        }
-
-        const content = await (await fetch(file.uri)).text()
-        const resultData = await processCSVFile(content)
-        
-        if (!resultData.valid) {
-          showAlert('Invalid File Format', resultData.error)
-          return
-        }
-        
-        if (resultData.data.length === 0) {
-          showAlert('Error', 'No valid data found in file.')
-          return
-        }
-
-        updateUploadedData(resultData.data, file.name)
-        showAlert('Success', `File uploaded successfully! Found ${resultData.data.length} valid records.`)
-      }
-    } catch (error) {
-      showAlert('Error', 'Failed to load file. Please try again.')
-    } finally {
-      setIsLoading(false)
-    }
+  const handleFileSelect = () => {
+    // Mock function - no actual functionality
+    console.log('File select clicked')
   }
 
   const handleClearUploads = () => {
-    showConfirm(
-      'Clear All Uploads',
-      'Are you sure you want to clear all uploaded files and their content? This action cannot be undone.',
-      () => clearUploadedData()
-    )
+    // Mock function - no actual functionality
+    console.log('Clear uploads clicked')
   }
 
   return (
@@ -151,74 +78,51 @@ const Upload = () => {
 
         {/* File Upload Interface */}
         <View style={styles.uploadSection}>
-        <View style={styles.uploadContainer}>
-          <View style={styles.uploadIcon}>
-            <Text style={styles.uploadIconText}>+</Text>
+          <View style={styles.uploadContainer}>
+            <View style={styles.uploadIcon}>
+              <Text style={styles.uploadIconText}>+</Text>
+            </View>
+            <Text style={styles.uploadText}>Select your data file</Text>
+            
+            <TouchableOpacity 
+              style={styles.browseButton} 
+              onPress={handleFileSelect}
+            >
+              <Text style={styles.browseButtonText}>Select Files</Text>
+            </TouchableOpacity>
+            
+            <Text style={styles.supportedFormats}>CSV files only</Text>
           </View>
-          <Text style={styles.uploadText}>Select your data file</Text>
-          
-          <TouchableOpacity 
-            style={[styles.browseButton, isLoading && styles.browseButtonDisabled]} 
-            onPress={handleFileSelect}
-            disabled={isLoading}
-          >
-            <Text style={styles.browseButtonText}>
-              {isLoading ? 'Loading...' : 'Select Files'}
-            </Text>
-          </TouchableOpacity>
-          
-          <Text style={styles.supportedFormats}>CSV files only</Text>
-        </View>
 
-        {/* Upload Status / Clear Button */}
-        {hasUploadedData ? (
+          {/* Upload Status / Clear Button */}
           <TouchableOpacity style={styles.clearButton} onPress={handleClearUploads}>
             <Text style={styles.clearButtonText}>Clear Uploads</Text>
           </TouchableOpacity>
-        ) : (
-          <View style={styles.statusContainer}>
-            <Text style={styles.statusText}>No files uploaded yet</Text>
-          </View>
-        )}
-      </View>
+        </View>
 
         {/* File Contents Display */}
         <View style={styles.contentSection}>
           <View style={styles.contentHeader}>
             <Text style={styles.contentTitle}>File Contents</Text>
-            {uploadedFileName && (
-              <Text style={styles.fileName}>Viewing: {uploadedFileName}</Text>
-            )}
+            <Text style={styles.fileName}>Viewing: sample-data.csv</Text>
           </View>
 
           <View style={styles.listContainer}>
-            {uploadedData.length > 0 ? (
-              <>
-                              {/* Table Header */}
-              <View style={styles.tableHeader}>
-                <Text style={[styles.headerCell, styles.randomColumn]}>Random</Text>
-                <Text style={[styles.headerCell, styles.nameColumn]}>Name</Text>
-                <Text style={[styles.headerCell, styles.qrColumn]}>QR Content</Text>
-              </View>
+            {/* Table Header */}
+            <View style={styles.tableHeader}>
+              <Text style={[styles.headerCell, styles.randomColumn]}>Random</Text>
+              <Text style={[styles.headerCell, styles.nameColumn]}>Name</Text>
+              <Text style={[styles.headerCell, styles.qrColumn]}>QR Content</Text>
+            </View>
 
-              {/* Table Rows */}
-              {uploadedData.map((item, index) => (
-                <View key={item.id} style={[styles.tableRow, index % 2 === 0 && styles.evenRow]}>
-                  <Text style={[styles.cell, styles.randomColumn]} numberOfLines={1}>{item.random}</Text>
-                  <Text style={[styles.cell, styles.nameColumn]} numberOfLines={1}>{item.name}</Text>
-                  <Text style={[styles.cell, styles.qrColumn]} numberOfLines={1}>{item.qrContent}</Text>
-                </View>
-              ))}
-              </>
-            ) : (
-              <View style={styles.emptyState}>
-                <View style={styles.emptyIcon}>
-                  <Text style={styles.emptyIconText}>○</Text>
-                </View>
-                <Text style={styles.emptyText}>No file content</Text>
-                <Text style={styles.emptySubtext}>Upload a CSV file with Random, Name, and QR Content columns</Text>
+            {/* Table Rows */}
+            {mockData.map((item, index) => (
+              <View key={item.id} style={[styles.tableRow, index % 2 === 0 && styles.evenRow]}>
+                <Text style={[styles.cell, styles.randomColumn]} numberOfLines={1}>{item.random}</Text>
+                <Text style={[styles.cell, styles.nameColumn]} numberOfLines={1}>{item.name}</Text>
+                <Text style={[styles.cell, styles.qrColumn]} numberOfLines={1}>{item.qrContent}</Text>
               </View>
-            )}
+            ))}
           </View>
         </View>
       </ScrollView>
@@ -278,7 +182,6 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: getResponsiveDimensions().subtitleFontSize,
     color: '#666',
-    textAlign: 'left', // Consistent left alignment for both pages
   },
   uploadSection: {
     marginBottom: 20,
@@ -293,7 +196,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: getResponsiveDimensions().horizontalPadding,
     alignItems: 'center',
     marginBottom: 12,
-    // Full width to match other containers
     width: '100%',
   },
   uploadIcon: {
@@ -330,30 +232,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  browseButtonDisabled: {
-    backgroundColor: '#9ca3af',
-    borderColor: '#9ca3af',
-  },
   supportedFormats: {
     fontSize: 14,
     color: '#888',
     fontStyle: 'italic',
     marginBottom: 16,
-  },
-
-  statusContainer: {
-    backgroundColor: '#fff',
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e1e5e9',
-    width: '100%',
-  },
-  statusText: {
-    fontSize: 16,
-    color: '#333',
-    textAlign: 'center',
-    fontWeight: '500',
   },
   clearButton: {
     backgroundColor: '#ef4444',
@@ -394,13 +277,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#f3f4f6',
     overflow: 'hidden',
-    // Full width to match other containers
     width: '100%',
-    // Minimum height with flexible growth
     minHeight: 200,
-    flex: 0, // Allow natural height expansion
+    flex: 0,
   },
-
   tableHeader: {
     flexDirection: 'row',
     backgroundColor: '#f8f9fa',
@@ -430,48 +310,17 @@ const styles = StyleSheet.create({
     color: '#333',
     textAlign: 'left',
   },
+  // Column widths for proper table layout
   randomColumn: {
-    flex: 1.2,
-    paddingRight: 10,
+    flex: 1,
+    minWidth: 80,
   },
   nameColumn: {
-    flex: 1,
-    paddingRight: 10,
+    flex: 2,
+    minWidth: 120,
   },
   qrColumn: {
-    flex: 1.5,
-  },
-  emptyState: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 60,
-  },
-  emptyIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#f3f4f6',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  emptyIconText: {
-    fontSize: 20,
-    color: '#9ca3af',
-    fontWeight: '300',
-  },
-  emptyText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#6b7280',
-    marginBottom: 8,
-    paddingHorizontal: 20,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: '#9ca3af',
-    textAlign: 'center',
-    paddingHorizontal: 20,
+    flex: 2,
+    minWidth: 120,
   },
 })
