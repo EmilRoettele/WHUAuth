@@ -14,3 +14,7 @@ git commit -m "Describe your change"
 git push
 
 # 3. That's it! Netlify handles the rest automatically
+
+Issue: Camera Tab Lifecycle Freeze
+Keyword: useFocusEffect
+Description: Camera stream froze when switching between tabs because the camera component wasn't handling React Navigation's focus/blur lifecycle. Fixed by using useFocusEffect to properly activate/deactivate camera based on tab focus state.
